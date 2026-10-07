@@ -204,7 +204,7 @@ class Player {
     this.specCd = 0; this.specMax = 1.6; this.castCd = 0; this.castMax = 1;
     this.powers = { attack: null, special: null, dash: null, cast: null };
     this.revives = meta.revive; this.critT = 0; this.dead = false;
-    this.moving = false; this.animT = 0; this.flip = false;
+    this.moving = false; this.animT = 0; this.flip = false; this.flipSide = false; this.dir8 = 2; this.faceAng = Math.PI * 1.25;
   }
   has(id) { for (const k in this.powers) if (this.powers[k] && this.powers[k].id === id) return true; return false; }
 
@@ -236,7 +236,7 @@ class Player {
       this.afterT -= dt;
       if (this.afterT <= 0) {
         this.afterT = 0.025;
-        addFx({ type: 'after', x: this.x, y: this.y, anim: 'dash', frame: 1, flip: this.flip, color: this.has('moon_dash') ? '#9fb8ff' : '#6d86c9', life: 0.22 });
+        addFx({ type: 'after', x: this.x, y: this.y, anim: 'dash', frame: 1, flip: this.flipSide, color: this.has('moon_dash') ? '#9fb8ff' : '#6d86c9', life: 0.22 });
       }
       if (this.has('fire_dash')) {
         this.trailT -= dt;
@@ -252,8 +252,14 @@ class Player {
       else if ((I.wasPressed('Mouse2') || I.wasPressed('KeyK')) && this.specCd <= 0) this.special();
     }
     if ((I.wasPressed('KeyQ') || I.wasPressed('KeyL')) && this.powers.cast && this.castCd <= 0) this.cast();
-    const sa = isoAng(this.aim);
-    if (Math.abs(Math.cos(sa)) > 0.15) this.flip = Math.cos(sa) < 0;
+    // 바라보는 방향: 공격 중에는 조준, 이동 중에는 이동 방향, 멈추면 마지막 방향 (하데스 방식)
+    if (this.atkAnim > 0 || this.spinAnim > 0 || this.castAnim > 0 || I.isDown('Mouse0') || I.isDown('KeyJ')) this.faceAng = this.aim;
+    else if (this.dashT > 0) this.faceAng = Math.atan2(this.dashDy, this.dashDx);
+    else if (this.moving) this.faceAng = Math.atan2(my, mx);
+    const sa = isoAng(this.faceAng);
+    this.dir8 = ((Math.round(sa / (Math.PI / 4)) % 8) + 8) % 8;
+    this.flip = DIR8[this.dir8][1];
+    if (Math.abs(Math.cos(sa)) > 0.15) this.flipSide = Math.cos(sa) < 0; // 방향 구분 없는 동작(대시·회전·주술·피격)용
     collideWorld(this);
   }
 
@@ -329,7 +335,7 @@ class Player {
   cast() {
     const p = this.powers.cast;
     this.castMax = p.cd || 8;
-    this.castCd = this.castMax * this.cdMul; this.castAnim = 0.5;
+    this.castCd = this.castMax * this.cdMul; this.castAnim = 0.6;
     if (p.id === 'fire_cast') {
       const m = unIso(Input.mouse.x, Input.mouse.y), tx = clamp(m.x, ARENA.x1, ARENA.x2), ty = clamp(m.y, ARENA.y1, ARENA.y2);
       addHazard({ kind: 'circle', team: 'player', x: tx, y: ty, r: 120, delay: 0.45, dmg: 50, fx: 'fire', burn: true, color: '#ff7a2a' });
@@ -353,19 +359,21 @@ class Player {
     if (this.critT > 0) { ctx.save(); ctx.shadowColor = '#cfe0ff'; ctx.shadowBlur = 25; ring(this.x, this.y - 18, 30, 'rgba(207,224,255,0.6)', 2); ctx.restore(); }
     // 우선순위: 피격 > 대시 > 주술 > 회전베기 > 연격 > 달리기 > 대기
     const once = (k, elapsed) => Math.min(SPR[k].n - 1, SPR[k].hit + Math.floor(elapsed * SPR[k].fps));
-    let anim = 'idle', frame = Math.floor(this.animT * SPR.idle.fps) % SPR.idle.n;
-    if (this.hurtT > 0) { anim = 'hurt'; frame = once('hurt', 0.28 - this.hurtT); }
-    else if (this.dashT > 0) { anim = 'dash'; frame = Math.floor(this.animT * SPR.dash.fps) % SPR.dash.n; }
-    else if (this.castAnim > 0) { anim = 'cast'; frame = once('cast', 0.5 - this.castAnim); }
-    else if (this.spinAnim > 0) { anim = 'spin'; frame = once('spin', 0.33 - this.spinAnim); }
-    else if (this.atkAnim > 0) { anim = 'attack' + (this.combo + 1); frame = once(anim, 0.27 - this.atkAnim); }
-    else if (this.moving) { anim = 'run'; frame = Math.floor(this.animT * SPR.run.fps) % SPR.run.n; }
+    const loop = k => Math.floor(this.animT * SPR[k].fps) % SPR[k].n;
+    const d = DIR8[this.dir8][0];
+    let anim = 'idle_' + d, frame = loop(anim), flip = this.flip;
+    if (this.hurtT > 0) { anim = 'hurt'; frame = once('hurt', 0.28 - this.hurtT); flip = this.flipSide; }
+    else if (this.dashT > 0) { anim = 'dash'; frame = loop('dash'); flip = this.flipSide; }
+    else if (this.castAnim > 0) { anim = 'cast'; frame = once('cast', 0.6 - this.castAnim); flip = this.flipSide; }
+    else if (this.spinAnim > 0) { anim = 'spin'; frame = once('spin', 0.33 - this.spinAnim); flip = this.flipSide; }
+    else if (this.atkAnim > 0) { anim = 'attack_' + d; frame = once(anim, 0.27 - this.atkAnim); } // 3연격 모두 방향별 베기
+    else if (this.moving) { anim = 'run_' + d; frame = loop(anim); }
     const blink = this.iframes > 0 && this.dashT <= 0 && Math.floor(G.time * 18) % 2 === 0;
     ctx.globalAlpha = blink ? 0.35 : 1;
-    drawPlayerSprite(this.x, this.y, anim, frame, this.flip);
+    drawPlayerSprite(this.x, this.y, anim, frame, flip);
     ctx.globalAlpha = 1;
     // 스프라이트가 없을 때만 검 궤적을 선으로 그린다 (스프라이트에는 검이 그려져 있음)
-    if (this.swing && !sprReady(SPR.idle)) {
+    if (this.swing && !sprReady(SPR.idle_e)) {
       const k = clamp(this.swing.t / this.swing.dur, 0, 1), a = isoAng(lerp(this.swing.from, this.swing.to, k));
       const cx = this.x, cy = this.y - 18;
       ctx.save(); ctx.strokeStyle = '#eef4ff'; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.shadowColor = '#9fc0ff'; ctx.shadowBlur = 14;

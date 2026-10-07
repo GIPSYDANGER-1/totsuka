@@ -140,11 +140,22 @@ function roundRect(x, y, w, h, r) {
 
 // ───────── 이미지 로더 ─────────
 function loadImg(src) { const img = new Image(); img.src = src; return img; }
-// 스사노오 (sprite-artist 제작, tools/sprites/susanoo.py). 96×96 프레임, 발끝 앵커 (46, 81)
-// hit: 칼날이 휘둘러지는 프레임. 판정이 누르는 즉시 나므로 그 프레임부터 재생한다.
+// 주인공: 사무라이 8방향 (오른쪽은 원본 에셋, 나머지는 sprite-artist가 tools/sprites/samurai8.py로 제작)
+// 96×96 프레임, 발끝 앵커 (46, 81). 직접 그린 방향은 5개(e, se, s, ne, n), 나머지 3개는 좌우 반전.
+// hit: 칼이 휘둘러지는 프레임. 판정이 누르는 즉시 나므로 그 프레임부터 재생한다.
+// (이전 주인공 스사노오 스프라이트는 assets/player/susanoo_*.png에 남아 있다)
 const SPR = {};
-for (const [k, n, fps, hit] of [
-  ['idle', 6, 8], ['run', 8, 12], ['hurt', 3, 12], ['dash', 4, 14], ['cast', 5, 10], ['spin', 6, 18],
-  ['attack1', 4, 16, 1], ['attack2', 4, 16, 1], ['attack3', 5, 14, 2],
-]) SPR[k] = { img: loadImg(`assets/player/susanoo_${k}.png`), n, fps, hit: hit || 0 };
+const sheet = (file, n, fps, hit = 0) => ({ img: loadImg(`assets/player/${file}.png`), n, fps, hit });
+for (const d of ['e', 'se', 's', 'ne', 'n']) {
+  const orig = d === 'e'; // 원본 옆모습은 프레임 수가 다르다
+  SPR[`idle_${d}`] = sheet(`samurai_${d}_idle`, orig ? 10 : 6, orig ? 10 : 6);
+  SPR[`run_${d}`] = sheet(`samurai_${d}_run`, orig ? 16 : 8, orig ? 16 : 10);
+  SPR[`attack_${d}`] = sheet(`samurai_${d}_attack`, orig ? 7 : 6, orig ? 14 : 12, orig ? 4 : 3);
+}
+SPR.dash = sheet('samurai_dash', 4, 12);
+SPR.spin = sheet('samurai_spin', 6, 18, 1);
+SPR.cast = sheet('samurai_cast', 5, 8);
+SPR.hurt = sheet('samurai_hurt', 4, 10);
+// 화면 각도 8구역(0 = 오른쪽, 시계 방향) → [시트 방향, 좌우 반전]
+const DIR8 = [['e', false], ['se', false], ['s', false], ['se', true], ['e', true], ['ne', true], ['n', false], ['ne', false]];
 const sprReady = s => s.img.complete && s.img.naturalWidth > 0;
