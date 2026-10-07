@@ -59,7 +59,7 @@ class Boss extends Enemy {
       if (this.wait > 0) this.wait -= this.sdt;
       else {
         const r = this.co.next();
-        if (r.done) { this.co = null; this.rest = this.phase === 2 ? 0.6 : 1.0; }
+        if (r.done) { this.co = null; this.rest = (this.phase === 2 ? 0.6 : 1.0) * D().rest; }
         else this.wait = r.value || 0;
       }
     } else {
@@ -113,8 +113,8 @@ class Kagutsuchi extends Boss {
     for (let k = 0; k < times; k++) {
       const a = angTo(this, G.player);
       this.hold = 'charge'; this.faceLock = a; // 몸을 숙인 돌진 자세로 예고
-      addHazard({ kind: 'line', x: this.x, y: this.y, ang: a, len: 650, width: this.r * 2, delay: 0.65, active: 0, owner: this, cancelOnDeath: true, color: '#ff6a2a' });
-      yield 0.65;
+      const warn = addHazard({ kind: 'line', x: this.x, y: this.y, ang: a, len: 650, width: this.r * 2, delay: 0.65, active: 0, owner: this, cancelOnDeath: true, color: '#ff6a2a' });
+      yield warn.delay; // 예고선이 다 차면 돌진
       let t = 0, drop = 0, hit = false;
       Sfx.play('dash');
       while (t < 0.75) {
@@ -311,9 +311,9 @@ class Orochi extends Boss {
     const n = this.phase === 2 ? 5 : 3;
     for (const i of shuffle([0, 1, 2, 3, 4, 5, 6, 7]).slice(0, n)) {
       const h = this.heads[i], a = angTo(h, G.player);
-      this.warn[i] = 0.75; // 예고 동안 입을 벌린다
-      addHazard({ kind: 'line', x: h.x, y: h.y, ang: a, len: 780, width: 56, delay: 0.75, active: 0.18, dmg: 22, owner: this, cancelOnDeath: true, fx: 'bite', color: '#8aff6a' });
-      setTimer(0.75, () => { this.lunge[i] = 1; });
+      const hz = addHazard({ kind: 'line', x: h.x, y: h.y, ang: a, len: 780, width: 56, delay: 0.75, active: 0.18, dmg: 22, owner: this, cancelOnDeath: true, fx: 'bite', color: '#8aff6a' });
+      this.warn[i] = hz.delay;
+      setTimer(hz.delay / G.enemyScale(), () => { this.lunge[i] = 1; });
       yield 0.3;
     }
     yield 1.0;
@@ -339,9 +339,10 @@ class Orochi extends Boss {
     yield 1.0;
   }
   *pEightfold() {
-    for (const h of this.heads) addHazard({ kind: 'line', x: h.x, y: h.y, ang: h.a, len: 950, width: 44, delay: 1.0, active: 0.25, dmg: 25, owner: this, cancelOnDeath: true, fx: 'bite', color: '#b6ff8a' });
-    this.warn.fill(1.0);
-    setTimer(1.0, () => this.lunge.fill(1));
+    let delay = 1;
+    for (const h of this.heads) delay = addHazard({ kind: 'line', x: h.x, y: h.y, ang: h.a, len: 950, width: 44, delay: 1.0, active: 0.25, dmg: 25, owner: this, cancelOnDeath: true, fx: 'bite', color: '#b6ff8a' }).delay;
+    this.warn.fill(delay);
+    setTimer(delay / G.enemyScale(), () => this.lunge.fill(1));
     yield 1.6;
   }
   *pSummon() {

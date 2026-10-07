@@ -156,7 +156,7 @@ function killEnemy(e) {
 function hurtPlayer(dmg) {
   const P = G.player;
   if (!P || P.dead || P.iframes > 0 || P.dashT > 0 || G.state !== 'play') return false;
-  dmg = Math.max(1, Math.round(dmg));
+  dmg = Math.max(1, Math.round(dmg * D().enemyDmg));
   P.hp -= dmg; P.iframes = 0.9; P.hurtT = 0.28;
   G.shake = Math.max(G.shake, 11); G.hitstop = Math.max(G.hitstop, 0.07); G.redFlash = 0.35;
   addText(P.x, P.y, '-' + dmg, '#ff5050', 24, 75);
@@ -425,6 +425,7 @@ class Projectile {
   }
 }
 function enemyShoot(x, y, ang, speed, o = {}) {
+  speed *= D().bullet;
   G.projectiles.push(new Projectile(Object.assign({ x, y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, team: 'enemy' }, o)));
 }
 
@@ -435,6 +436,7 @@ class Hazard {
     Object.assign(this, { t: 0, delay: 0, active: 0.12, dmg: 0, team: 'enemy', color: '#ff4a3a', triggered: false, dead: false, life: 0, tick: 0 }, o);
     this.hitSet = new Set();
     if (this.kind === 'ring') this.rad = this.rad || 0;
+    if (this.team === 'enemy') { this.delay *= D().tele; if (this.speed) this.speed *= D().bullet; } // 난이도: 예고 시간·충격파 속도
   }
   update(dt) {
     if (this.cancelOnDeath && this.owner && this.owner.dead && !this.triggered) { this.dead = true; return; }

@@ -13,7 +13,7 @@ const G = {
 
 // ───────── 영구 저장 ─────────
 function loadMeta() {
-  const d = { souls: 0, hp: 0, str: 0, dash: 0, revive: 0, runs: 0, wins: 0, best: 0 };
+  const d = { souls: 0, hp: 0, str: 0, dash: 0, revive: 0, runs: 0, wins: 0, best: 0, difficulty: 'normal', clears: {} };
   try { const s = JSON.parse(localStorage.getItem('totsuka_meta')); if (s) Object.assign(d, s); } catch (e) { }
   return d;
 }
@@ -25,7 +25,11 @@ function setTimer(delay, fn) { G.timers.push({ t: delay, fn }); }
 // ───────── 런 / 방 진행 ─────────
 function startRun() {
   Object.assign(G, { stageIdx: 0, roomIdx: 0, runSouls: 0, kills: 0, eclipse: 0, time: 0, banner: null, choice: null });
+  G.difficulty = G.meta.difficulty in DIFFICULTIES ? G.meta.difficulty : 'normal';
   G.player = new Player(G.meta);
+  const d = D(), P = G.player;
+  P.maxHp += d.playerHp; P.hp = P.maxHp;
+  P.revives = d.noRevive ? 0 : P.revives + d.revive;
   G.meta.runs++; saveMeta();
   G.state = 'play';
   enterRoom(pick(['sake', 'maxhp', 'whet']));
@@ -74,7 +78,7 @@ function genObstacles() {
 
 function genWaves() {
   const st = STAGES[G.stageIdx];
-  const budget = 5 + G.stageIdx * 3 + G.roomIdx * 2, nW = G.roomIdx >= 3 ? 3 : 2, waves = [];
+  const budget = Math.max(3, 5 + G.stageIdx * 3 + G.roomIdx * 2 + D().budget), nW = G.roomIdx >= 3 ? 3 : 2, waves = [];
   for (let w = 0; w < nW; w++) {
     let b = Math.ceil(budget / nW) + (w === nW - 1 ? 1 : 0);
     const wave = [];
@@ -154,17 +158,19 @@ function choosePower(i) {
   const pw = G.choice.opts[i], P = G.player;
   P.powers[pw.slot] = pw;
   if (pw.slot === 'cast') P.castCd = 0;
-  P.hp = Math.min(P.maxHp, P.hp + Math.round(P.maxHp * 0.3));
+  const heal = D().choiceHeal;
+  P.hp = Math.min(P.maxHp, P.hp + Math.round(P.maxHp * heal));
   G.state = 'play'; G.choice = null;
   Sfx.play('pickup');
-  banner(pw.name, `${SLOTS[pw.slot]} 권능 획득 · 체력 30% 회복`, 1.8);
+  banner(pw.name, `${SLOTS[pw.slot]} 권능 획득` + (heal ? ` · 체력 ${Math.round(heal * 100)}% 회복` : ''), 1.8);
   openDoors();
 }
 
 function onPlayerDeath() { setTimer(1.2, () => endRun(false)); G.hitstop = 0.4; }
 function endRun(won) {
-  G.meta.souls += G.runSouls;
-  if (won) G.meta.wins++;
+  G.soulsGained = Math.round(G.runSouls * D().souls);
+  G.meta.souls += G.soulsGained;
+  if (won) { G.meta.wins++; G.meta.clears[G.difficulty] = (G.meta.clears[G.difficulty] || 0) + 1; }
   saveMeta();
   G.state = won ? 'win' : 'dead';
   G.endT = 0; G.banner = null;
@@ -450,7 +456,7 @@ function drawHUD() {
   text(st.name, W / 2, 22, 18, '#e8dcc4');
   let rs = '';
   for (let i = 1; i <= ROOMS_PER_STAGE; i++) rs += i < G.roomIdx ? '●' : i === G.roomIdx ? '◉' : i === ROOMS_PER_STAGE ? '◆' : '○';
-  text(`${'一二三四'[G.stageIdx]}  ${rs}`, W / 2, 44, 13, '#a89878');
+  text(`${'一二三四'[G.stageIdx]}  ${rs}  ·  ${D().name}`, W / 2, 44, 13, '#a89878');
 
   // 권능 슬롯 (공격/특수/대시/주술)
   const sw = 58, gap = 8, sx0 = W - 28 - (sw + gap) * 4 + gap, sy = 12;
@@ -522,14 +528,30 @@ function drawMenuBg() {
 
 function drawTitle() {
   drawMenuBg();
-  text('토츠카의 검', W / 2, 190, 84, '#f4e6c8', 'center', 900);
-  text('十 拳 剣  ·  TOTSUKA NO TSURUGI', W / 2, 260, 18, '#c9a06a');
-  wrapText('다카마가하라에서 추방된 폭풍의 신 스사노오. 신들의 시련을 베어 넘고, 이즈모의 대사(大蛇)를 토츠카의 검으로 베어라.', W / 2, 310, 700, 17, '#a8987e');
-  if (uiButton(W / 2 - 130, 380, 260, 56, '출진(出陣)', { size: 24 })) startRun();
-  if (uiButton(W / 2 - 130, 450, 260, 48, `수련 — 영구 강화  (魂 ${G.meta.souls})`, { size: 17 })) G.state = 'upgrade';
-  if (Input.wasPressed('Enter') || Input.wasPressed('Space')) startRun();
   const m = G.meta;
-  text(`출진 ${m.runs}회 · 오로치 토벌 ${m.wins}회`, W / 2, 530, 14, '#6a5e4e');
+  text('토츠카의 검', W / 2, 160, 84, '#f4e6c8', 'center', 900);
+  text('十 拳 剣  ·  TOTSUKA NO TSURUGI', W / 2, 228, 18, '#c9a06a');
+  wrapText('다카마가하라에서 추방된 폭풍의 신 스사노오. 신들의 시련을 베어 넘고, 이즈모의 대사(大蛇)를 토츠카의 검으로 베어라.', W / 2, 270, 700, 17, '#a8987e');
+  // 난이도 선택 (클릭 또는 ←/→)
+  const bw = 150, gap = 12, bx0 = W / 2 - (bw * 4 + gap * 3) / 2, by = 340;
+  let cur = DIFF_ORDER.indexOf(m.difficulty); if (cur < 0) cur = 1;
+  if (Input.wasPressed('ArrowLeft') || Input.wasPressed('ArrowRight')) {
+    cur = clamp(cur + (Input.wasPressed('ArrowRight') ? 1 : -1), 0, 3); m.difficulty = DIFF_ORDER[cur]; saveMeta(); Sfx.play('select');
+  }
+  DIFF_ORDER.forEach((k, i) => {
+    const d = DIFFICULTIES[k], x = bx0 + i * (bw + gap), sel = i === cur, hv = hover(x, by, bw, 42);
+    ctx.fillStyle = sel ? 'rgba(40,24,18,0.95)' : hv ? 'rgba(30,20,16,0.9)' : 'rgba(16,12,10,0.8)';
+    roundRect(x, by, bw, 42, 6); ctx.fill();
+    ctx.strokeStyle = sel ? d.color : hv ? '#8a5a3a' : '#3a3028'; ctx.lineWidth = sel ? 2.5 : 1.5; roundRect(x, by, bw, 42, 6); ctx.stroke();
+    text(d.name, x + bw / 2, by + 22, 18, sel ? d.color : '#8a7a62', 'center', sel ? 900 : 700);
+    if (m.clears[k]) text(`토벌 ${m.clears[k]}`, x + bw / 2, by + 56, 11, d.color, 'center', 400);
+    if (hv && Input.wasPressed('Mouse0') && !sel) { m.difficulty = k; saveMeta(); Sfx.play('select'); }
+  });
+  text(DIFFICULTIES[DIFF_ORDER[cur]].desc, W / 2, by + 80, 15, '#c9b48a', 'center', 400);
+  if (uiButton(W / 2 - 130, 450, 260, 56, '출진(出陣)', { size: 24 })) startRun();
+  if (uiButton(W / 2 - 130, 518, 260, 46, `수련 — 영구 강화  (魂 ${m.souls})`, { size: 17 })) G.state = 'upgrade';
+  if (Input.wasPressed('Enter') || Input.wasPressed('Space')) startRun();
+  text(`출진 ${m.runs}회 · 오로치 토벌 ${m.wins}회`, W / 2, 592, 14, '#6a5e4e');
   text('이동 WASD   ·   베기 좌클릭/J (3연격)   ·   회전베기 우클릭/K   ·   대시 Space/Shift   ·   주술 Q   ·   일시정지 Esc', W / 2, H - 40, 14, '#8a7a62');
 }
 
@@ -613,7 +635,8 @@ function drawEnd() {
   const st = STAGES[G.stageIdx];
   text(`도달: ${st.name} ${G.roomIdx}번째 방`, W / 2, 310, 19, '#e8dcc4', 'center', 400);
   text(`처치한 적: ${G.kills}`, W / 2, 345, 19, '#e8dcc4', 'center', 400);
-  text(`획득한 혼(魂): ${G.runSouls}  →  보유 ${G.meta.souls}`, W / 2, 380, 19, '#8fd8ff', 'center', 400);
+  const mult = D().souls === 1 ? '' : ` × ${D().souls} (${D().name})`;
+  text(`획득한 혼(魂): ${G.runSouls}${mult} = ${G.soulsGained}  →  보유 ${G.meta.souls}`, W / 2, 380, 19, '#8fd8ff', 'center', 400);
   ctx.globalAlpha = 1;
   if (G.endT > 0.8 && uiButton(W / 2 - 140, 460, 280, 56, '다카마가하라로 귀환')) G.state = 'title';
 }

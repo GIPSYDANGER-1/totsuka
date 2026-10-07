@@ -74,3 +74,28 @@ const META = [
   { id: 'dash', name: '질풍보', desc: '대시 충전 +1', max: 1, cost: () => 70 },
   { id: 'revive', name: '불굴(不屈)', desc: '쓰러져도 1회 부활 (체력 50%)', max: 2, cost: l => 60 + l * 60 },
 ];
+
+// ───────── 난이도 ─────────
+// enemyHp/enemyDmg: 적 체력·피해 배율, tele: 공격 예고 시간 배율(클수록 여유), bullet: 탄속·충격파 속도 배율,
+// rest: 보스 패턴 사이 휴식 배율, budget: 방마다 적 수 가감, playerHp: 시작 최대 체력 가감,
+// choiceHeal: 권능 선택 시 회복 비율, souls: 런 종료 시 혼 배율, revive: 불굴 추가 횟수, noRevive: 불굴 사용 불가
+const DIFFICULTIES = {
+  easy: {
+    name: '쉬움', color: '#7fd46a', desc: '적이 약하고 공격 예고가 길다. 불굴(부활) +1회. 처음 하는 분께.',
+    enemyHp: 0.7, enemyDmg: 0.6, tele: 1.3, bullet: 0.85, rest: 1.35, budget: -2, playerHp: 30, choiceHeal: 0.5, souls: 0.75, revive: 1,
+  },
+  normal: {
+    name: '일반', color: '#e8dcc4', desc: '기본 밸런스.',
+    enemyHp: 1, enemyDmg: 1, tele: 1, bullet: 1, rest: 1, budget: 0, playerHp: 0, choiceHeal: 0.3, souls: 1, revive: 0,
+  },
+  hard: {
+    name: '어려움', color: '#ffb04a', desc: '적이 더 강하고 빠르며 더 많이 몰려온다. 혼 1.4배.',
+    enemyHp: 1.3, enemyDmg: 1.4, tele: 0.85, bullet: 1.12, rest: 0.8, budget: 3, playerHp: 0, choiceHeal: 0.2, souls: 1.4, revive: 0,
+  },
+  hardcore: {
+    name: '하드코어', color: '#ff4a3a', desc: '불굴(부활) 불가, 권능 선택 시 회복 없음, 적 피해 1.8배. 혼 2배.',
+    enemyHp: 1.6, enemyDmg: 1.8, tele: 0.75, bullet: 1.22, rest: 0.65, budget: 5, playerHp: -20, choiceHeal: 0, souls: 2, revive: 0, noRevive: true,
+  },
+};
+const DIFF_ORDER = ['easy', 'normal', 'hard', 'hardcore'];
+function D() { return DIFFICULTIES[(typeof G !== 'undefined' && G.difficulty) || 'normal']; }

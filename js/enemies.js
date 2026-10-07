@@ -19,7 +19,7 @@ class Enemy {
   constructor(x, y, o) {
     this.x = x; this.y = y; this.r = o.r; this.name = o.name;
     const scale = o.boss ? 1 : 1 + G.stageIdx * 0.4;
-    this.maxHp = this.hp = Math.round(o.hp * scale);
+    this.maxHp = this.hp = Math.round(o.hp * scale * D().enemyHp);
     this.speed = o.speed || 0;
     this.dmgMul = o.boss ? 1 : 1 + G.stageIdx * 0.15;
     this.souls = o.souls || 1;
@@ -86,9 +86,9 @@ class Oni extends Enemy {
       this.moving = d > 62;
       if (this.moving) this.moveToward(P.x, P.y, this.speed, s);
       if (d < 115 && this.cd <= 0) {
-        this.st = 'wind'; this.stT = 0.65;
         const a = this.face;
-        addHazard({ kind: 'circle', x: this.x + Math.cos(a) * 52, y: this.y + Math.sin(a) * 52, r: 60, delay: 0.65, dmg: 15 * this.dmgMul, owner: this, cancelOnDeath: true, fx: 'slam', color: '#ff5040' });
+        this.st = 'wind';
+        this.stT = addHazard({ kind: 'circle', x: this.x + Math.cos(a) * 52, y: this.y + Math.sin(a) * 52, r: 60, delay: 0.65, dmg: 15 * this.dmgMul, owner: this, cancelOnDeath: true, fx: 'slam', color: '#ff5040' }).delay;
       }
     } else if (this.st === 'wind') { this.stT -= s; if (this.stT <= 0) { this.st = 'recover'; this.stT = 0.75; } }
     else if (this.st === 'recover') { this.stT -= s; if (this.stT <= 0) { this.st = 'chase'; this.cd = rand(1, 1.8); } }
@@ -179,8 +179,8 @@ class Onibi extends Enemy {
       const ox = P.x + Math.cos(this.t * 0.8 + this.seed) * 190, oy = P.y + Math.sin(this.t * 0.8 + this.seed) * 150;
       this.moveToward(ox, oy, this.speed, s);
       if (this.cd <= 0 && dist(this, P) < 480) {
-        this.st = 'aim'; this.stT = 0.55; this.cAng = angTo(this, P);
-        addHazard({ kind: 'line', x: this.x, y: this.y, ang: this.cAng, len: 270, width: 26, delay: 0.55, active: 0, dmg: 0, owner: this, cancelOnDeath: true, color: '#6ab8ff' });
+        this.st = 'aim'; this.cAng = angTo(this, P);
+        this.stT = addHazard({ kind: 'line', x: this.x, y: this.y, ang: this.cAng, len: 270, width: 26, delay: 0.55, active: 0, dmg: 0, owner: this, cancelOnDeath: true, color: '#6ab8ff' }).delay; // 예고선이 끝나면 돌진
       }
     } else if (this.st === 'aim') {
       this.stT -= s; if (this.stT <= 0) { this.st = 'charge'; this.stT = 0.4; this.hitDone = false; }
