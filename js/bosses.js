@@ -3,15 +3,51 @@
 // 각 패턴은 제너레이터. `yield 초` 로 대기, `yield 0` 은 다음 프레임.
 // 체력 50% 이하에서 2페이즈(격노) — 패턴이 빨라지고 새 패턴이 추가된다.
 
+// 보스 스프라이트 (sprite-artist 제작, tools/sprites/<보스>.py). 배율 1.9, 발끝 앵커.
+const BSPR = {
+  kagutsuchi: enemySheet('kagutsuchi', 128, 64, 112, 1.9, { idle: [6, 8], cast: [5, 10], charge: [4, 12] }, 'bosses'),
+  raijin: enemySheet('raijin', 128, 64, 112, 1.9, { idle: [6, 8], drum: [5, 12], blink: [4, 20] }, 'bosses'),
+  tsukuyomi: enemySheet('tsukuyomi', 128, 64, 112, 1.9, { idle: [6, 6], cast: [5, 10] }, 'bosses'),
+  orochi: enemySheet('orochi_body', 160, 80, 124, 1.9, { idle: [4, 4] }, 'bosses'),
+  orochiHead: enemySheet('orochi_head', 48, 11, 24, 1.5, { idle: [4, 6], bite: [4, 12] }, 'bosses'), // 앵커 = 목 접합점
+};
+// 오로치 몸통 프레임 안의 목 밑동 8개 (화면 왼쪽 → 오른쪽). 숨쉬기 프레임마다 위로 0/1/2/1px
+const OROCHI_NECKS = [[51, 66], [54, 71], [62, 75], [74, 77], [86, 77], [98, 75], [106, 71], [109, 66]];
+const OROCHI_BREATH = [0, 1, 2, 1];
+
 class Boss extends Enemy {
   constructor(x, y, o) {
     super(x, y, Object.assign({ boss: true }, o));
     this.isBoss = true; this.god = o.god; this.co = null; this.wait = 0; this.rest = 1.2;
     this.phase = 1; this.patterns = []; this.patterns2 = []; this.lastPat = null; this.sdt = 0;
+    this.spr = BSPR[o.god]; this.textH = o.textH || 180;
+    this.act = null; this.hold = null; this.faceLock = null;
+  }
+  // 한 번 재생하는 동작 (rev: 거꾸로). hold는 풀 때까지 반복하는 자세.
+  play(name, rev = false) { this.act = { name, t: 0, rev }; }
+  animFrame() {
+    if (this.hold) return [this.hold, this.loop(this.hold, this.t)];
+    if (this.act) {
+      const a = this.spr.anims[this.act.name], f = Math.floor(this.act.t * a.fps);
+      if (f < a.n) return [this.act.name, this.act.rev ? a.n - 1 - f : f];
+      this.act = null;
+    }
+    return ['idle', this.loop('idle', this.t)];
+  }
+  // 스프라이트가 있으면 그리고 true, 없으면 false (도형으로 대체)
+  drawBody() {
+    if (!this.spriteReady()) return false;
+    this.drawShadowFeet(this.r * 1.3);
+    const [anim, f] = this.animFrame();
+    this.drawSpr(anim, f);
+    this.drawOverlay();
+    return true;
   }
   update(dt) {
     this.sdt = dt * this.timeScale();
     this.baseUpdate(dt);
+    if (this.act) this.act.t += this.sdt;
+    this.face = this.faceLock ?? angTo(this, G.player);
     if (G.bossIntro > 0) return;
     if (this.phase === 1 && this.hp <= this.maxHp * 0.5) {
       this.phase = 2;
@@ -66,6 +102,7 @@ class Kagutsuchi extends Boss {
     const waves = this.phase === 2 ? 4 : 3;
     for (let k = 0; k < waves; k++) {
       const n = 14 + this.phase * 2, off = rand(0, TAU);
+      this.play('cast');
       for (let i = 0; i < n; i++) this.bullet(off + i * TAU / n, 200, { r: 9, dmg: 12, color: '#ff7a2a' });
       Sfx.play('shoot'); yield 0.5;
     }
@@ -75,6 +112,7 @@ class Kagutsuchi extends Boss {
     const times = this.phase === 2 ? 3 : 2;
     for (let k = 0; k < times; k++) {
       const a = angTo(this, G.player);
+      this.hold = 'charge'; this.faceLock = a; // 몸을 숙인 돌진 자세로 예고
       addHazard({ kind: 'line', x: this.x, y: this.y, ang: a, len: 650, width: this.r * 2, delay: 0.65, active: 0, owner: this, cancelOnDeath: true, color: '#ff6a2a' });
       yield 0.65;
       let t = 0, drop = 0, hit = false;
@@ -88,12 +126,13 @@ class Kagutsuchi extends Boss {
         if (!hit && dist(this, G.player) < this.r + G.player.r && hurtPlayer(20)) hit = true;
         yield 0;
       }
-      G.shake = 8; yield 0.45;
+      G.shake = 8; this.hold = null; this.faceLock = null; yield 0.45;
     }
     yield 0.4;
   }
   *pPillars() {
     const n = this.phase === 2 ? 8 : 5;
+    this.play('cast');
     for (let i = 0; i < n; i++) {
       const P = G.player;
       addHazard({ kind: 'circle', x: P.x + rand(-20, 20), y: P.y + rand(-20, 20), r: 66, delay: 0.85, dmg: 18, fx: 'fire', color: '#ff7a2a' });
@@ -103,6 +142,7 @@ class Kagutsuchi extends Boss {
   }
   *pSpiral() {
     let t = 0, acc = 0, a = rand(0, TAU);
+    this.play('cast');
     while (t < 2.6) {
       t += this.sdt; acc += this.sdt;
       if (acc > 0.09) { acc = 0; for (let k = 0; k < 3; k++) this.bullet(a + k * TAU / 3, 230, { r: 8, dmg: 11, color: '#ffb04a' }); a += 0.27; }
@@ -112,7 +152,7 @@ class Kagutsuchi extends Boss {
   }
   draw() {
     if (Math.random() < 0.5) addFx({ type: 'p', x: this.x + rand(-25, 25), y: this.y + rand(-25, 25), h: rand(10, 50), vh: rand(80, 160), vx: 0, vy: 0, color: pick(['#ff6a2a', '#ffb04a', '#ff3a1a']), size: rand(3, 7), life: 0.6 });
-    this.drawAura('#ff8a3a', '火', '#3a0d06', '#ff5a1a');
+    this.drawBody() || this.drawAura('#ff8a3a', '火', '#3a0d06', '#ff5a1a');
   }
 }
 
@@ -122,11 +162,12 @@ class Raijin extends Boss {
     super(x, y, { r: 42, hp: 920, name: '라이진', god: 'raijin', souls: 40, blood: '#a98bff' });
     this.patterns = [this.pStrikes, this.pDrums, this.pBlink];
     this.patterns2 = [this.pBolts];
-    this.alpha = 1; this.drumHit = 0;
+    this.drumHit = 0;
   }
   idle(dt) { this.moveToward(ISO.WW / 2 + Math.cos(this.t * 0.5) * 220, ISO.WD / 2 + Math.sin(this.t * 0.7) * 220, 95, dt); }
   *pStrikes() {
     const n = this.phase === 2 ? 18 : 12;
+    this.play('drum');
     for (let i = 0; i < n; i++) {
       const onP = i % 4 === 0, P = G.player;
       const x = onP ? P.x : rand(ARENA.x1 + 40, ARENA.x2 - 40), y = onP ? P.y : rand(ARENA.y1 + 40, ARENA.y2 - 40);
@@ -138,6 +179,7 @@ class Raijin extends Boss {
   *pDrums() {
     const n = this.phase === 2 ? 5 : 3;
     for (let i = 0; i < n; i++) {
+      this.play('drum'); yield 0.08; // 북채를 내리치는 프레임에 맞춰 충격파
       this.drumHit = 0.2;
       addHazard({ kind: 'ring', x: this.x, y: this.y, rad: this.r, speed: 330, width: 30, maxR: 1500, dmg: 16, color: '#d9c6ff' });
       Sfx.play('boom'); G.shake = 6;
@@ -148,29 +190,33 @@ class Raijin extends Boss {
   *pBlink() {
     const n = this.phase === 2 ? 3 : 2;
     for (let i = 0; i < n; i++) {
+      this.play('blink'); Sfx.play('thunder');           // 번개로 변해 사라짐
+      boltFx(this.x, this.y, this.x, this.y, '#d9c8ff', 4, 460, 0);
+      yield 0.2;
       burstParticles(this.x, this.y, 20, '#cdb8ff', 260, 4, 0.4);
-      boltFx(this.x, this.y, this.x, this.y, '#d9c8ff', 4, 460, 0); Sfx.play('thunder');
       const P = G.player, a = rand(0, TAU);
       this.x = clamp(P.x + Math.cos(a) * 140, ARENA.x1 + 60, ARENA.x2 - 60);
       this.y = clamp(P.y + Math.sin(a) * 140, ARENA.y1 + 60, ARENA.y2 - 60);
-      this.alpha = 0;
+      this.play('blink', true);                            // 번개 기둥에서 다시 나타남
+      boltFx(this.x, this.y, this.x, this.y, '#d9c8ff', 4, 460, 0);
       yield 0.2;
-      this.alpha = 1;
       addHazard({ kind: 'circle', x: this.x, y: this.y, r: 125, delay: 0.55, dmg: 22, fx: 'thunder', owner: this, cancelOnDeath: true, color: '#b98bff' });
-      yield 0.95;
+      yield 0.75;
     }
     yield 0.3;
   }
   *pBolts() {
     for (let k = 0; k < 4; k++) {
       const a = angTo(this, G.player);
+      this.play('drum');
       for (let i = -2; i <= 2; i++) this.bullet(a + i * 0.2, 430, { r: 7, dmg: 12, color: '#e0d2ff' });
       Sfx.play('shoot'); yield 0.32;
     }
     yield 0.5;
   }
   draw() {
-    if (this.alpha <= 0) return;
+    if (Math.random() < 0.03) boltFx(this.x, this.y, this.x + rand(-80, 80), this.y + rand(-80, 80), '#cdb8ff', 2, 70, 0);
+    if (this.drawBody()) return; // 천둥북 고리는 스프라이트에 들어 있다
     this.drumHit = Math.max(0, this.drumHit - 1 / 60);
     // 등 뒤의 천둥북 고리
     for (let i = 0; i < 8; i++) {
@@ -178,7 +224,6 @@ class Raijin extends Boss {
       const dx = this.x + Math.cos(a) * rr, dy = this.y + Math.sin(a) * rr;
       circle(dx, dy, 10, '#5a2a1a'); circle(dx, dy, 7, '#e8d6b0'); text('巴', dx, dy + 1, 9, '#5a2a1a');
     }
-    if (Math.random() < 0.08) boltFx(this.x, this.y, this.x + rand(-80, 80), this.y + rand(-80, 80), '#cdb8ff', 2, 40, 0);
     this.drawAura('#cdb8ff', '雷', '#1a1030', '#7a5aff');
   }
 }
@@ -195,6 +240,7 @@ class Tsukuyomi extends Boss {
     const waves = this.phase === 2 ? 3 : 2;
     for (let w = 0; w < waves; w++) {
       const a = angTo(this, G.player);
+      this.play('cast');
       for (let i = -3; i <= 3; i++) this.bullet(a + i * 0.2 + (w % 2) * 0.1, 215, { r: 14, dmg: 14, color: '#dfe9ff', shape: 'crescent' });
       Sfx.play('moon'); yield 0.75;
     }
@@ -203,6 +249,7 @@ class Tsukuyomi extends Boss {
   *pSpiral() {
     let t = 0, acc = 0, ang = rand(0, TAU);
     const arms = this.phase === 2 ? 5 : 4;
+    this.play('cast');
     while (t < 2.8) {
       t += this.sdt; acc += this.sdt;
       if (acc >= 0.11) { acc = 0; for (let k = 0; k < arms; k++) this.bullet(ang + k * TAU / arms, 175, { r: 7, dmg: 11, color: '#bcd0ff' }); ang += 0.22; }
@@ -212,12 +259,14 @@ class Tsukuyomi extends Boss {
   }
   *pBeams() {
     const n = this.phase === 2 ? 4 : 3, base = angTo(this, G.player) + Math.PI / n, dir = pick([-1, 1]);
+    this.play('cast');
     for (let k = 0; k < n; k++) addHazard({ kind: 'beam', owner: this, follow: true, x: this.x, y: this.y, ang: base + k * TAU / n, angVel: 0.5 * dir, len: 1500, width: 30, delay: 1.1, active: 2.6, dmg: 20, color: '#e6eeff' });
     Sfx.play('moon');
     yield 3.8;
   }
   *pMoonfall() {
     const P = G.player;
+    this.play('cast');
     addHazard({ kind: 'circle', x: P.x, y: P.y, r: 95, delay: 1.1, dmg: 24, fx: 'moon', color: '#dfe9ff' });
     for (let i = 0; i < 6; i++) {
       const a = i * TAU / 6;
@@ -226,6 +275,7 @@ class Tsukuyomi extends Boss {
     yield 2.0;
   }
   draw() {
+    if (this.drawBody()) return; // 초승달 광배는 스프라이트에 들어 있다
     // 등 뒤의 초승달 광배
     ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(Math.sin(G.time) * 0.2 - 0.6);
     ctx.shadowColor = '#e6eeff'; ctx.shadowBlur = 30; ctx.fillStyle = '#e6eeff';
@@ -238,22 +288,22 @@ class Tsukuyomi extends Boss {
 // ── 최종. 야마타노오로치 ──
 class Orochi extends Boss {
   constructor(x, y) {
-    super(x, y, { r: 52, hp: 1700, name: '야마타노오로치', god: 'orochi', souls: 80, blood: '#5fbf4a' });
+    super(x, y, { r: 52, hp: 1700, name: '야마타노오로치', god: 'orochi', souls: 80, blood: '#5fbf4a', textH: 150 });
     this.patterns = [this.pBite, this.pSpray, this.pPools];
     this.patterns2 = [this.pEightfold, this.pSummon];
-    this.heads = []; this.lunge = new Array(8).fill(0);
+    this.heads = []; this.lunge = new Array(8).fill(0); this.warn = new Array(8).fill(0);
     this.updateHeads();
   }
   updateHeads() {
     for (let i = 0; i < 8; i++) {
       const base = Math.PI / 4 - Math.PI * 0.6 + i * (Math.PI * 1.2) / 7; // 화면 아래쪽 부채꼴로 펼쳐진 여덟 머리
-      const a = base + Math.sin(this.t * 1.6 + i) * 0.12, len = 110 + Math.sin(this.t * 2 + i * 1.7) * 12 + this.lunge[i] * 70;
+      const a = base + Math.sin(this.t * 1.6 + i) * 0.12, len = 135 + Math.sin(this.t * 2 + i * 1.7) * 12 + this.lunge[i] * 70;
       this.heads[i] = { x: this.x + Math.cos(a) * len, y: this.y + Math.sin(a) * len, a };
     }
   }
   update(dt) {
     super.update(dt);
-    for (let i = 0; i < 8; i++) this.lunge[i] = Math.max(0, this.lunge[i] - dt * 2.5);
+    for (let i = 0; i < 8; i++) { this.lunge[i] = Math.max(0, this.lunge[i] - dt * 2.5); this.warn[i] = Math.max(0, this.warn[i] - this.sdt); }
     this.updateHeads();
   }
   idle(dt) { const s = Math.sin(this.t * 0.4) * 130; this.moveToward(ISO.WW * 0.27 + s, ISO.WD * 0.27 - s, 50, dt); }
@@ -261,6 +311,7 @@ class Orochi extends Boss {
     const n = this.phase === 2 ? 5 : 3;
     for (const i of shuffle([0, 1, 2, 3, 4, 5, 6, 7]).slice(0, n)) {
       const h = this.heads[i], a = angTo(h, G.player);
+      this.warn[i] = 0.75; // 예고 동안 입을 벌린다
       addHazard({ kind: 'line', x: h.x, y: h.y, ang: a, len: 780, width: 56, delay: 0.75, active: 0.18, dmg: 22, owner: this, cancelOnDeath: true, fx: 'bite', color: '#8aff6a' });
       setTimer(0.75, () => { this.lunge[i] = 1; });
       yield 0.3;
@@ -289,6 +340,7 @@ class Orochi extends Boss {
   }
   *pEightfold() {
     for (const h of this.heads) addHazard({ kind: 'line', x: h.x, y: h.y, ang: h.a, len: 950, width: 44, delay: 1.0, active: 0.25, dmg: 25, owner: this, cancelOnDeath: true, fx: 'bite', color: '#b6ff8a' });
+    this.warn.fill(1.0);
     setTimer(1.0, () => this.lunge.fill(1));
     yield 1.6;
   }
@@ -299,7 +351,38 @@ class Orochi extends Boss {
     }
     yield 1.2;
   }
+  flipX() { return false; } // 몸통은 목 밑동 좌표가 고정이라 뒤집지 않는다
   draw() {
+    if (!this.spriteReady()) return this.drawShape();
+    const { x, y } = this, S = this.spr.scale, bf = this.loop('idle', this.t), lift = OROCHI_BREATH[bf];
+    const HS = BSPR.orochiHead, hs = HS.scale;
+    this.drawShadowFeet(this.r * 2.4);
+    this.drawSpr('idle', bf);
+    // 몸통 뒤쪽(화면 위)으로 뻗은 머리부터 그려 겹침을 맞춘다
+    const order = [...this.heads.keys()].sort((a, b) => (this.heads[a].x + this.heads[a].y) - (this.heads[b].x + this.heads[b].y));
+    for (const i of order) {
+      const hw = this.heads[i], h = isoLocal(this, hw.x, hw.y, 30);
+      const nb = OROCHI_NECKS[7 - i]; // 머리 0번이 화면 오른쪽 → 오른쪽 끝 목 밑동
+      const bx = x + (nb[0] - 80) * S, by = y + (nb[1] - lift - 124) * S;
+      const cx = (bx + h.x) / 2 + Math.sin(this.t * 3 + i) * 14, cy = Math.min(by, h.y) - 40;
+      ctx.lineCap = 'round';
+      for (const [w, c] of [[25, '#183a2c'], [20, '#4c9850'], [6, '#7fd46a']]) {
+        ctx.strokeStyle = c; ctx.lineWidth = w;
+        ctx.beginPath(); ctx.moveTo(bx, by); ctx.quadraticCurveTo(cx, cy, h.x, h.y); ctx.stroke();
+      }
+      const L = this.lunge[i], wn = this.warn[i];
+      let anim = 'idle', f = Math.floor(this.t * 6 + i) % 4;
+      if (L > 0.5) { anim = 'bite'; f = 2; } else if (L > 0) { anim = 'bite'; f = 3; } else if (wn > 0) { anim = 'bite'; f = wn > 0.35 ? 0 : 1; }
+      const img = HS.anims[anim].img;
+      ctx.save(); ctx.translate(h.x, h.y); ctx.rotate(isoAng(hw.a)); ctx.imageSmoothingEnabled = false;
+      const blit = () => ctx.drawImage(img, f * 48, 0, 48, 48, -HS.ax * hs, -HS.ay * hs, 48 * hs, 48 * hs);
+      blit();
+      if (this.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha *= 0.8; blit(); }
+      ctx.restore();
+    }
+    this.drawOverlay();
+  }
+  drawShape() {
     const { x, y, r } = this;
     // 목과 머리
     // 몸통 뒤쪽(화면 위)으로 뻗은 머리부터 그려 겹침을 맞춘다

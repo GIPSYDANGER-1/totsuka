@@ -3,9 +3,9 @@
 
 // 스프라이트시트 (sprite-artist 제작, tools/sprites/*.py). 가로 스트립, 오른쪽을 바라봄.
 // [프레임 수, fps]. 앵커(ax, ay)는 프레임 안의 발끝(오니비는 불꽃 머리 중심) 좌표.
-function enemySheet(name, F, ax, ay, scale, anims) {
+function enemySheet(name, F, ax, ay, scale, anims, dir = 'enemies') {
   const o = { F, ax, ay, scale, anims: {} };
-  for (const [k, [n, fps]] of Object.entries(anims)) o.anims[k] = { img: loadImg(`assets/enemies/${name}_${k}.png`), n, fps };
+  for (const [k, [n, fps]] of Object.entries(anims)) o.anims[k] = { img: loadImg(`assets/${dir}/${name}_${k}.png`), n, fps };
   return o;
 }
 const ESPR = {
