@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>토츠카의 검 — 十拳剣</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; background: #07060a; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; }
+  canvas { display: block; image-rendering: auto; cursor: crosshair; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+  // 개발 중 브라우저 캐시를 피하기 위해 매번 새로 불러온다 (순서 보장)
+  ['core', 'iso', 'data', 'entities', 'enemies', 'bosses', 'game'].forEach(name => {
+    const s = document.createElement('script');
+    s.src = `js/${name}.js?v=${Date.now()}`; s.async = false;
+    document.body.appendChild(s);
+  });
+</script>
+</body>
+</html>
