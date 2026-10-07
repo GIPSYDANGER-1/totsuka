@@ -1,21 +1,10 @@
 'use strict';
 // ───────── 플레이어 / 투사체 / 장판·예고 공격(Hazard) / 이펙트 / 전투 공용 함수 ─────────
 
-// 월드 좌표의 방 (화면에서는 마름모로 투영됨)
+// 월드 좌표의 방 경계 상자 (방마다 makeRoomMap이 갱신. 실제 바닥 모양은 MAP.mask)
 const ARENA = { x1: 0, y1: 0, x2: ISO.WW, y2: ISO.WD };
 
-function collideWorld(o) {
-  o.x = clamp(o.x, ARENA.x1 + o.r, ARENA.x2 - o.r);
-  o.y = clamp(o.y, ARENA.y1 + o.r, ARENA.y2 - o.r);
-  for (const ob of G.obstacles) {
-    const dx = o.x - ob.x, dy = o.y - ob.y, d = Math.hypot(dx, dy), m = o.r + ob.r;
-    if (d < m && d > 0.001) { o.x = ob.x + dx / d * m; o.y = ob.y + dy / d * m; }
-  }
-}
-function inObstacle(x, y, pad = 0) {
-  if (x < ARENA.x1 || x > ARENA.x2 || y < ARENA.y1 || y > ARENA.y2) return true;
-  return G.obstacles.some(ob => Math.hypot(x - ob.x, y - ob.y) < ob.r + pad);
-}
+// collideWorld / inObstacle 는 map.js (타일 단위 바닥 판정)
 
 // ───────── 이펙트 ─────────
 function addFx(o) { o.life = o.life ?? 0.5; o.max = o.max ?? o.life; if (G.fx.length < 900) G.fx.push(o); return o; }
@@ -27,8 +16,8 @@ function burstParticles(x, y, n, color, spd = 220, size = 3, life = 0.5, h = 14)
 }
 // 번개: 월드 좌표 두 점(+높이)을 화면 좌표로 바꿔 지그재그로 잇는다. 하늘에서 치는 번개는 h1을 크게.
 function boltFx(wx1, wy1, wx2, wy2, color = '#d9c8ff', width = 3, h1 = 20, h2 = 20) {
-  const a = iso(wx1, wy1, h1), b = iso(wx2, wy2, h2);
-  const x1 = a.x, y1 = a.y, x2 = b.x, y2 = b.y;
+  const a = iso(wx1, wy1, h1), b = iso(wx2, wy2, h2); // 카메라가 움직여도 따라가도록 원점 기준 좌표로 저장
+  const x1 = a.x - ISO.OX, y1 = a.y - ISO.OY, x2 = b.x - ISO.OX, y2 = b.y - ISO.OY;
   const pts = [[x1, y1]], segs = 9;
   for (let i = 1; i < segs; i++) {
     const t = i / segs, nx = -(y2 - y1), ny = x2 - x1, l = Math.hypot(nx, ny) || 1, off = rand(-1, 1) * 22;
@@ -88,7 +77,7 @@ function drawAirFx() {
     switch (f.type) {
       case 'p': { const q = iso(f.x, f.y, f.h || 0); circle(q.x, q.y, f.size * (0.4 + k * 0.6), f.color); break; }
       case 'bolt': {
-        ctx.save(); ctx.strokeStyle = f.color; ctx.lineWidth = f.width; ctx.shadowColor = f.color; ctx.shadowBlur = 16; ctx.lineJoin = 'round';
+        ctx.save(); ctx.translate(ISO.OX, ISO.OY); ctx.strokeStyle = f.color; ctx.lineWidth = f.width; ctx.shadowColor = f.color; ctx.shadowBlur = 16; ctx.lineJoin = 'round';
         ctx.beginPath(); f.pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.stroke();
         ctx.lineWidth = f.width * 0.35; ctx.strokeStyle = '#fff'; ctx.stroke(); ctx.restore(); break;
       }

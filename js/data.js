@@ -56,13 +56,13 @@ const REWARDS = {
 };
 
 const STAGES = [
-  { name: '요미 히라사카', sub: '불타는 황천의 언덕', boss: 'kagutsuchi', enemies: ['oni', 'onibi', 'kappa', 'onibi'],
+  { name: '요미 히라사카', sub: '불타는 황천의 언덕', boss: 'kagutsuchi', env: 'yomi', enemies: ['oni', 'onibi', 'kappa', 'onibi'],
     wall: '#140806', floor: '#2b1611', tile: 'rgba(0,0,0,0.28)', accent: '#ff6a2a', deco: 'lava' },
-  { name: '뇌운의 고원', sub: '천둥이 잠들지 않는 곳', boss: 'raijin', enemies: ['oni', 'kappa', 'tengu', 'onibi'],
+  { name: '뇌운의 고원', sub: '천둥이 잠들지 않는 곳', boss: 'raijin', env: 'thunder', enemies: ['oni', 'kappa', 'tengu', 'onibi'],
     wall: '#0b0914', floor: '#1d1a2c', tile: 'rgba(0,0,0,0.3)', accent: '#a98bff', deco: 'spark' },
-  { name: '월하의 신궁', sub: '달빛만이 허락된 궁', boss: 'tsukuyomi', enemies: ['tengu', 'onibi', 'kappa', 'oni'],
+  { name: '월하의 신궁', sub: '달빛만이 허락된 궁', boss: 'tsukuyomi', env: 'moon', enemies: ['tengu', 'onibi', 'kappa', 'oni'],
     wall: '#070a12', floor: '#161c2a', tile: 'rgba(255,255,255,0.05)', accent: '#bcd2ff', deco: 'moon' },
-  { name: '이즈모 히이카와', sub: '여덟 골짜기를 휘감은 강', boss: 'orochi', enemies: ['oni', 'kappa', 'tengu', 'onibi', 'oni'],
+  { name: '이즈모 히이카와', sub: '여덟 골짜기를 휘감은 강', boss: 'orochi', env: 'izumo', enemies: ['oni', 'kappa', 'tengu', 'onibi', 'oni'],
     wall: '#050c08', floor: '#14211a', tile: 'rgba(0,0,0,0.3)', accent: '#7fd46a', deco: 'water' },
 ];
 const ROOMS_PER_STAGE = 4; // 전투 3 + 보스 1

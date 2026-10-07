@@ -40,11 +40,13 @@ function enterRoom(reward) {
   const st = STAGES[G.stageIdx];
   G.room = { reward, isBoss: G.roomIdx === ROOMS_PER_STAGE, cleared: false, waves: [], waveIdx: 0 };
   Object.assign(G, { enemies: [], projectiles: [], hazards: [], fx: [], texts: [], pickups: [], doors: [], spawns: [], timers: [], eclipse: 0 });
+  makeRoomMap(G.room.isBoss);
   const P = G.player;
-  Object.assign(P, { x: ISO.WW - 70, y: ISO.WD - 70, dashT: 0, swing: null, iframes: 1, atkCd: 0.2 });
+  Object.assign(P, { x: MAP.entry.x, y: MAP.entry.y, _lx: MAP.entry.x, _ly: MAP.entry.y, dashT: 0, swing: null, iframes: 1, atkCd: 0.2 });
+  updateCamera(0, true);
   G.meta.best = Math.max(G.meta.best, G.stageIdx * ROOMS_PER_STAGE + G.roomIdx);
   if (G.room.isBoss) {
-    G.obstacles = st.boss === 'orochi' ? [] : [[0.22, 0.5], [0.5, 0.22], [0.78, 0.5], [0.5, 0.78]].map(([x, y]) => ({ x: x * ISO.WW, y: y * ISO.WD, r: 24 }));
+    G.obstacles = st.boss === 'orochi' ? [] : [[0.2, 0.5], [0.5, 0.2], [0.8, 0.5], [0.5, 0.8]].map(([x, y]) => ({ x: x * ISO.WW, y: y * ISO.WD, r: 24, kind: 'lantern' }));
     const god = GODS[st.boss];
     G.enemies.push(new BOSS_TYPES[st.boss](ISO.WW * 0.38, ISO.WD * 0.38));
     G.bossIntro = 2.8;
@@ -59,26 +61,26 @@ function enterRoom(reward) {
   G.bg = buildBg(st);
 }
 
-// 문 위치 (월드 좌표). 왼쪽 뒷벽, 오른쪽 뒷벽, 그리고 맨 안쪽 모서리(보스/다음 지역)
-const DOOR_SPOTS = [{ x: 22, y: ISO.WD * 0.34 }, { x: ISO.WW * 0.34, y: 22 }];
-const DOOR_CORNER = { x: 40, y: 40 };
-
 function genObstacles() {
-  const obs = [], n = randi(2, 5), WW = ISO.WW, WD = ISO.WD;
-  const avoid = [[WW / 2, WD / 2, 140], [WW - 70, WD - 70, 230], [DOOR_CORNER.x, DOOR_CORNER.y, 170], ...DOOR_SPOTS.map(d => [d.x, d.y, 160])];
-  for (let tries = 0; tries < 200 && obs.length < n; tries++) {
-    const x = rand(90, WW - 90), y = rand(90, WD - 90);
-    if (avoid.some(([ax, ay, r]) => Math.hypot(x - ax, y - ay) < r)) continue;
-    if (segDist(x, y, DOOR_CORNER.x, DOOR_CORNER.y, WW / 2, WD / 2) < 90) continue; // 안쪽 모서리 문으로 가는 길목
-    if (obs.some(o => Math.hypot(o.x - x, o.y - y) < 150)) continue;
-    obs.push({ x, y, r: 24 });
+  // 석등과 지역 바위를 섞어 놓는다. 입구, 보상 자리, 문 앞, 안쪽 모서리로 가는 길목은 비운다.
+  const obs = [], n = randi(3, 4 + Math.floor(MAP.mask.filter(Boolean).length / 60));
+  const keep = [[MAP.entry.x, MAP.entry.y, 200], [MAP.center.x, MAP.center.y, 140], [MAP.corner.x, MAP.corner.y, 170], ...MAP.doorSpots.map(d => [d.x, d.y, 160])];
+  for (let tries = 0; tries < 300 && obs.length < n; tries++) {
+    const x = rand(60, ISO.WW - 60), y = rand(60, ISO.WD - 60);
+    if (inObstacle(x, y, 70)) continue; // 바닥 가장자리와 다른 장애물에서 떨어뜨림
+    if (keep.some(([ax, ay, r]) => Math.hypot(x - ax, y - ay) < r)) continue;
+    if (segDist(x, y, MAP.corner.x, MAP.corner.y, MAP.center.x, MAP.center.y) < 90) continue;
+    if (obs.some(o => Math.hypot(o.x - x, o.y - y) < 160)) continue;
+    const rock = Math.random() < 0.55;
+    obs.push({ x, y, r: rock ? 28 : 24, kind: rock ? 'rock' : 'lantern', v: randi(0, 1) });
   }
   return obs;
 }
 
 function genWaves() {
   const st = STAGES[G.stageIdx];
-  const budget = Math.max(3, 5 + G.stageIdx * 3 + G.roomIdx * 2 + D().budget), nW = G.roomIdx >= 3 ? 3 : 2, waves = [];
+  const area = clamp(MAP.mask.filter(Boolean).length / 144, 0.9, 1.6); // 넓은 방일수록 적이 더 많다
+  const budget = Math.max(3, Math.round((5 + G.stageIdx * 3 + G.roomIdx * 2 + D().budget) * area)), nW = G.roomIdx >= 3 ? 3 : 2, waves = [];
   for (let w = 0; w < nW; w++) {
     let b = Math.ceil(budget / nW) + (w === nW - 1 ? 1 : 0);
     const wave = [];
@@ -91,7 +93,7 @@ function genWaves() {
 function spawnWave(wave) {
   const P = G.player;
   for (const type of wave) {
-    let x = ISO.WW / 2, y = ISO.WD / 2;
+    let { x, y } = MAP.center;
     for (let i = 0; i < 40; i++) {
       x = rand(ARENA.x1 + 50, ARENA.x2 - 50); y = rand(ARENA.y1 + 50, ARENA.y2 - 50);
       if (Math.hypot(x - P.x, y - P.y) > 260 && !inObstacle(x, y, 40)) break;
@@ -104,22 +106,22 @@ function roomCleared() {
   G.room.cleared = true;
   G.projectiles = G.projectiles.filter(p => p.team !== 'enemy');
   Sfx.play('door');
-  if (G.room.reward) G.pickups.push({ x: ISO.WW / 2, y: ISO.WD / 2, kind: G.room.reward, t: 0 });
+  if (G.room.reward) G.pickups.push({ ...MAP.center, kind: G.room.reward, t: 0 });
   else openDoors();
 }
 
 function openDoors() {
   const P = G.player;
   if (G.room.isBoss) {
-    G.doors = [{ ...DOOR_CORNER, kind: 'stage', reward: pick(['heal', 'maxhp', 'sake']) }];
+    G.doors = [{ ...MAP.corner, kind: 'stage', reward: pick(['heal', 'maxhp', 'sake']) }];
   } else if (G.roomIdx + 1 === ROOMS_PER_STAGE) {
-    G.doors = [{ ...DOOR_CORNER, kind: 'boss' }];
+    G.doors = [{ ...MAP.corner, kind: 'boss' }];
   } else {
     const pool = Object.keys(REWARDS).filter(k => !(k === 'heal' && P.hp > P.maxHp * 0.8));
     if (P.hp < P.maxHp * 0.45) pool.push('heal', 'heal'); // 체력이 낮으면 회복이 더 자주 나온다
     const rs = [];
     while (rs.length < 2) { const r = pick(pool); if (!rs.includes(r)) rs.push(r); }
-    G.doors = rs.map((r, i) => ({ ...DOOR_SPOTS[i], kind: 'room', reward: r }));
+    G.doors = rs.map((r, i) => ({ ...MAP.doorSpots[i], kind: 'room', reward: r }));
   }
   G.doors.forEach(d => d.open = 0);
   Sfx.play('door');
@@ -179,6 +181,7 @@ function endRun(won) {
 // ───────── 업데이트 ─────────
 function updatePlay(dt) {
   G.time += dt;
+  if (G.player && !G.player.dead) updateCamera(dt);
   if (G.eclipse > 0) G.eclipse -= dt;
   if (G.bossIntro > 0) G.bossIntro -= dt;
   const P = G.player;
@@ -237,95 +240,7 @@ function updatePlay(dt) {
 }
 
 // ───────── 배경 ─────────
-function buildBg(st) {
-  const c = document.createElement('canvas'); c.width = W; c.height = H;
-  const g = c.getContext('2d'), K = ISO.K, WW = ISO.WW, WD = ISO.WD, WH = ISO.WALL;
-  g.fillStyle = st.wall; g.fillRect(0, 0, W, H);
-  const top = iso(0, 0), right = iso(WW, 0), bottom = iso(WW, WD), left = iso(0, WD);
-  const poly = (pts, fill) => { g.beginPath(); pts.forEach((q, i) => i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y)); g.closePath(); g.fillStyle = fill; g.fill(); };
-  const up = (q, h) => ({ x: q.x, y: q.y - h });
-
-  // 바닥 앞쪽 두께 (떠 있는 석단 느낌)
-  const T = 26;
-  poly([left, bottom, right, up(right, -T), up(bottom, -T), up(left, -T)], st.floor);
-  poly([left, bottom, up(bottom, -T), up(left, -T)], 'rgba(0,0,0,0.55)');
-  poly([bottom, right, up(right, -T), up(bottom, -T)], 'rgba(0,0,0,0.7)');
-
-  // 바닥: 월드 좌표로 그리면 마름모로 투영된다
-  g.save(); g.setTransform(K, K / 2, -K, K / 2, ISO.OX, ISO.OY);
-  g.fillStyle = st.floor; g.fillRect(0, 0, WW, WD);
-  g.beginPath(); g.rect(0, 0, WW, WD); g.clip();
-  const TS = 65;
-  for (let x = 0; x < WW; x += TS) for (let y = 0; y < WD; y += TS) {
-    g.fillStyle = `rgba(255,255,255,${rand(0, 0.035)})`; g.fillRect(x, y, TS, TS);
-  }
-  g.strokeStyle = st.tile; g.lineWidth = 3;
-  for (let x = 0; x <= WW; x += TS) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, WD); g.stroke(); }
-  for (let y = 0; y <= WD; y += TS) { g.beginPath(); g.moveTo(0, y); g.lineTo(WW, y); g.stroke(); }
-  for (let i = 0; i < 1400; i++) { g.fillStyle = `rgba(255,255,255,${rand(0, 0.04)})`; g.fillRect(rand(0, WW), rand(0, WD), rand(1, 4), rand(1, 4)); }
-  if (st.deco === 'lava') {
-    g.shadowColor = '#ff5a1a'; g.shadowBlur = 14; g.strokeStyle = 'rgba(255,110,40,0.6)'; g.lineWidth = 3;
-    for (let i = 0; i < 10; i++) {
-      let x = rand(0, WW), y = rand(0, WD);
-      g.beginPath(); g.moveTo(x, y);
-      for (let k = 0; k < 6; k++) { x += rand(-60, 60); y += rand(-60, 60); g.lineTo(x, y); }
-      g.stroke();
-    }
-    g.shadowBlur = 0;
-  } else if (st.deco === 'spark') {
-    for (let i = 0; i < 14; i++) { g.fillStyle = 'rgba(169,139,255,0.08)'; g.beginPath(); g.arc(rand(0, WW), rand(0, WD), rand(40, 110), 0, TAU); g.fill(); }
-  } else if (st.deco === 'moon') {
-    const gr = g.createRadialGradient(WW / 2, WD / 2, 20, WW / 2, WD / 2, 420);
-    gr.addColorStop(0, 'rgba(200,215,255,0.14)'); gr.addColorStop(1, 'rgba(200,215,255,0)');
-    g.fillStyle = gr; g.fillRect(0, 0, WW, WD);
-    g.strokeStyle = 'rgba(200,215,255,0.14)'; g.lineWidth = 5; g.beginPath(); g.arc(WW / 2, WD / 2, 250, 0, TAU); g.stroke();
-    g.beginPath(); g.arc(WW / 2, WD / 2, 270, 0, TAU); g.stroke();
-  } else if (st.deco === 'water') {
-    g.strokeStyle = 'rgba(120,200,160,0.12)'; g.lineWidth = 3;
-    for (let i = 0; i < 26; i++) { g.beginPath(); g.arc(rand(0, WW), rand(0, WD), rand(15, 60), 0, TAU); g.stroke(); }
-  }
-  // 뒷벽 아래 그림자
-  let gr = g.createLinearGradient(0, 0, 0, 90); gr.addColorStop(0, 'rgba(0,0,0,0.6)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
-  g.fillStyle = gr; g.fillRect(0, 0, WW, 90);
-  gr = g.createLinearGradient(0, 0, 90, 0); gr.addColorStop(0, 'rgba(0,0,0,0.6)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
-  g.fillStyle = gr; g.fillRect(0, 0, 90, WD);
-  g.restore();
-
-  // 뒷벽 두 면 (왼쪽 면은 밝게, 오른쪽 면은 어둡게)
-  poly([left, top, up(top, WH), up(left, WH)], st.floor);
-  poly([left, top, up(top, WH), up(left, WH)], 'rgba(0,0,0,0.3)');
-  poly([top, right, up(right, WH), up(top, WH)], st.floor);
-  poly([top, right, up(right, WH), up(top, WH)], 'rgba(0,0,0,0.5)');
-  // 나무 기둥
-  g.fillStyle = 'rgba(0,0,0,0.35)';
-  for (let t = 0; t <= 1.0001; t += 1 / 6) {
-    for (const q of [iso(0, WD * t), iso(WW * t, 0)]) g.fillRect(q.x - 4, q.y - WH - 4, 8, WH + 4);
-  }
-  // 벽 윗선
-  g.strokeStyle = st.accent; g.globalAlpha = 0.6; g.lineWidth = 3;
-  g.beginPath(); g.moveTo(left.x, left.y - WH); g.lineTo(top.x, top.y - WH); g.lineTo(right.x, right.y - WH); g.stroke();
-  // 앞쪽 가장자리
-  g.globalAlpha = 0.4; g.lineWidth = 2;
-  g.beginPath(); g.moveTo(left.x, left.y); g.lineTo(bottom.x, bottom.y); g.lineTo(right.x, right.y); g.stroke();
-  g.globalAlpha = 1;
-  // 시메나와(금줄)와 시데 — 기둥 사이로 늘어진다
-  g.strokeStyle = '#c9b07a'; g.lineWidth = 5;
-  const posts = [];
-  for (let k = 6; k >= 0; k--) posts.push(up(iso(0, WD * k / 6), WH - 8));
-  for (let k = 1; k <= 6; k++) posts.push(up(iso(WW * k / 6, 0), WH - 8));
-  g.beginPath(); g.moveTo(posts[0].x, posts[0].y);
-  for (let k = 1; k < posts.length; k++) {
-    const a = posts[k - 1], b = posts[k];
-    g.quadraticCurveTo((a.x + b.x) / 2, (a.y + b.y) / 2 + 16, b.x, b.y);
-  }
-  g.stroke();
-  g.fillStyle = '#f2ece0';
-  for (let k = 1; k < posts.length; k++) {
-    const a = posts[k - 1], b = posts[k], x = (a.x + b.x) / 2, y = (a.y + b.y) / 2 + 8;
-    g.beginPath(); g.moveTo(x, y); g.lineTo(x + 6, y + 6); g.lineTo(x, y + 12); g.lineTo(x + 6, y + 18); g.lineTo(x + 2, y + 19); g.lineTo(x - 4, y + 12); g.lineTo(x + 2, y + 6); g.lineTo(x - 4, y); g.fill();
-  }
-  return c;
-}
+// buildBg / drawWallSeg / drawProp 는 map.js
 
 // 비네트는 한 번만 만든다
 const VIGNETTE = (() => {
@@ -362,6 +277,34 @@ function drawTorii(x, y, open, label) {
   if (label) label();
 }
 
+// 문(도리이): 벽에 붙은 문은 벽과 평행한 옆모습, 안쪽 모서리 문은 정면 모습
+function drawGate(d) {
+  const q = iso(d.x, d.y), C = ENV.common, side = !!d.side, img = side ? C.toriiSide : C.toriiFront;
+  const label = () => {
+    // 다음 보상(또는 보스)을 도리이 기둥 사이에 표시
+    if (d.kind === 'room' || d.kind === 'stage') drawRewardIcon(d.reward, q.x, q.y - 34, 16);
+    else { const god = GODS[STAGES[G.stageIdx].boss]; text(god.kanji, q.x, q.y - 33, 28, god.color, 'center', 900); }
+    if (d.kind === 'stage') text('다음 지역', q.x, q.y + 14, 13, '#ffe0b0');
+  };
+  if (!imgOk(img)) return drawTorii(q.x, q.y, d.open, label);
+  const [ax, ay] = side ? ENV_ANCHOR.toriiSide : ENV_ANCHOR.toriiFront;
+  ctx.save();
+  ctx.globalAlpha = 0.35 + d.open * 0.65;
+  if (d.open >= 1) { ctx.shadowColor = '#ff6a3a'; ctx.shadowBlur = 16 + Math.sin(G.time * 4) * 6; }
+  ctx.imageSmoothingEnabled = false;
+  ctx.translate(q.x, q.y);
+  if (d.side === 'L') ctx.scale(-1, 1); // 왼쪽 뒷벽용은 좌우 반전
+  ctx.drawImage(img, -ax * PX, -ay * PX, img.naturalWidth * PX, img.naturalHeight * PX);
+  ctx.restore();
+  if (d.open >= 1) { // 문 안쪽의 빛
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const gr = ctx.createRadialGradient(q.x, q.y - 30, 4, q.x, q.y - 30, 46);
+    gr.addColorStop(0, `rgba(255,210,150,${0.28 + Math.sin(G.time * 3) * 0.06})`); gr.addColorStop(1, 'rgba(255,210,150,0)');
+    ctx.fillStyle = gr; ctx.fillRect(q.x - 46, q.y - 76, 92, 92); ctx.restore();
+  }
+  label();
+}
+
 function drawRewardIcon(kind, x, y, r = 20) {
   const rw = REWARDS[kind];
   ctx.save(); ctx.shadowColor = rw.color; ctx.shadowBlur = 18;
@@ -377,12 +320,14 @@ function render() {
 
   VIEW.sx = G.shake > 0 ? rand(-G.shake, G.shake) : 0;
   VIEW.sy = G.shake > 0 ? rand(-G.shake, G.shake) : 0;
+  if (G.bgFallback && envReady()) G.bg = buildBg(STAGES[G.stageIdx]); // 환경 에셋이 늦게 로드되면 다시 그린다
   screenTransform();
-  ctx.drawImage(G.bg, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(G.bg, ISO.OX - G.bgO.x, ISO.OY - G.bgO.y);
 
   // 바닥 평면: 예고 범위, 장판, 소환진, 베기 궤적
   groundTransform();
-  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, ISO.WW, ISO.WD); ctx.clip();
+  ctx.save(); ctx.clip(MAP.clip);
   for (const h of G.hazards) if (h.kind === 'pool') h.draw();
   for (const h of G.hazards) if (h.kind !== 'pool') h.draw();
   for (const s of G.spawns) {
@@ -393,21 +338,13 @@ function render() {
   drawGroundFx();
   ctx.restore();
 
-  // 뒷벽의 문(도리이)
+  // 서 있는 것들: 깊이(x + y)로 정렬해 앞에 있는 것을 나중에 그린다.
+  // 뒷벽 조각도 함께 정렬해야 꺾인 방에서 벽 뒤의 캐릭터가 올바르게 가려진다.
   screenTransform();
-  for (const d of G.doors) {
-    const q = iso(d.x, d.y);
-    drawTorii(q.x, q.y, d.open, () => {
-      // 다음 보상(또는 보스)을 도리이 기둥 사이에 표시
-      if (d.kind === 'room' || d.kind === 'stage') drawRewardIcon(d.reward, q.x, q.y - 28, 16);
-      else { const god = GODS[STAGES[G.stageIdx].boss]; text(god.kanji, q.x, q.y - 27, 28, god.color, 'center', 900); }
-      if (d.kind === 'stage') text('다음 지역', q.x, q.y + 14, 13, '#ffe0b0');
-    });
-  }
-
-  // 서 있는 것들: 깊이(x + y)로 정렬해 앞에 있는 것을 나중에 그린다
   const list = [];
-  for (const o of G.obstacles) list.push({ z: o.x + o.y, d: () => { uprightAt(o); drawLantern(o); } });
+  for (const w of MAP.walls) list.push({ z: (w.tx + w.ty) * TS - 1, d: () => { screenTransform(); drawWallSeg(w); } });
+  for (const d of G.doors) list.push({ z: d.x + d.y + (d.side ? -20 : 50), d: () => { screenTransform(); drawGate(d); } }); // 모서리 문은 양옆 벽 조각보다 앞에
+  for (const o of G.obstacles) list.push({ z: o.x + o.y, d: () => { uprightAt(o); drawProp(o); } });
   for (const e of G.enemies) list.push({ z: e.x + e.y, d: () => { uprightAt(e, e.lift ?? e.r * 0.75); e.draw(); } });
   for (const pk of G.pickups) list.push({ z: pk.x + pk.y, d: () => { uprightAt(pk, 36 + Math.sin(pk.t * 3) * 5); drawRewardIcon(pk.kind, pk.x, pk.y, 22); } });
   for (const p of G.projectiles) list.push({ z: p.x + p.y, d: () => { uprightAt(p, 24); p.draw(); } });
