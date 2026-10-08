@@ -58,7 +58,7 @@ function enterRoom(reward) {
     G.waveDelay = 0.7;
     if (G.roomIdx === 1) banner(st.name, st.sub, 2.4);
   }
-  G.bg = buildBg(st);
+  if (R3ON()) r3BuildRoom(); else G.bg = buildBg(st);
 }
 
 function genObstacles() {
@@ -346,6 +346,7 @@ function render() {
   ctx.fillStyle = '#07060a'; ctx.fillRect(0, 0, W, H);
   if (G.state === 'title') return drawTitle();
   if (G.state === 'upgrade') return drawUpgrade();
+  if (R3ON()) return render3DFrame();
 
   VIEW.sx = G.shake > 0 ? rand(-G.shake, G.shake) : 0;
   VIEW.sy = G.shake > 0 ? rand(-G.shake, G.shake) : 0;
@@ -399,7 +400,11 @@ function render() {
   screenTransform();
   drawAirFx();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
+  drawScreenOverlays();
+}
 
+// 화면 전체에 덮는 것들: 비네트, 화면 효과, HUD, 배너, 메뉴 (2D·3D 공통)
+function drawScreenOverlays() {
   ctx.drawImage(VIGNETTE, 0, 0);
   if (G.eclipse > 0) { ctx.fillStyle = `rgba(40,60,120,${Math.min(0.25, G.eclipse * 0.15)})`; ctx.fillRect(0, 0, W, H); }
   if (G.redFlash > 0) { ctx.fillStyle = `rgba(200,0,0,${G.redFlash * 0.35})`; ctx.fillRect(0, 0, W, H); }
