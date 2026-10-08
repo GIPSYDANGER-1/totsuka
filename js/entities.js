@@ -250,9 +250,12 @@ class Player {
 
   update(dt) {
     const I = Input;
-    // 마우스는 대략 몸통 높이를 가리킨다고 보고 지면으로 역투영
-    const m = unIso(I.mouse.x, I.mouse.y + 20);
-    this.aim = Math.atan2(m.y - this.y, m.x - this.x);
+    // 공격 방향: 마우스를 최근에 움직였으면 커서 쪽(조준), 아니면 바라보는 방향 (아래에서 이동 방향으로 갱신)
+    const mouseAiming = performance.now() - (I.mouseMovedAt || -1e9) < 1500;
+    if (mouseAiming) {
+      const m = unIso(I.mouse.x, I.mouse.y + 20); // 마우스는 대략 몸통 높이를 가리킨다고 보고 지면으로 역투영
+      this.aim = Math.atan2(m.y - this.y, m.x - this.x);
+    }
     this.iframes = Math.max(0, this.iframes - dt);
     if (this.hopV || this.hopH) { this.hopH = Math.max(0, (this.hopH || 0) + this.hopV * dt); this.hopV = this.hopH > 0 ? this.hopV - 1100 * dt : 0; }
     this.hurtT = Math.max(0, this.hurtT - dt);
@@ -270,6 +273,7 @@ class Player {
     const ml = Math.hypot(mx, my);
     if (ml) { const d = screenDirToWorld(mx, my); mx = d.x; my = d.y; } // 화면 기준 WASD → 월드 방향
     this.moving = ml > 0;
+    if (!mouseAiming && this.moving) this.aim = Math.atan2(my, mx); // 조준 안 할 땐 달리는 방향으로 벤다
 
     if (this.dashT > 0) {
       this.dashT -= dt;

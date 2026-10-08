@@ -46,7 +46,8 @@ function trackMouse(e) {
   Input.mouse.x = (e.clientX - r.left) * W / r.width;
   Input.mouse.y = (e.clientY - r.top) * H / r.height;
 }
-addEventListener('mousemove', trackMouse);
+// 마우스를 실제로 움직인 시각 (클릭만으로는 갱신하지 않음) — 커서로 조준 중인지 판단용
+addEventListener('mousemove', e => { trackMouse(e); Input.mouseMovedAt = performance.now(); });
 canvas.addEventListener('mousedown', e => {
   trackMouse(e);
   const k = 'Mouse' + e.button;
