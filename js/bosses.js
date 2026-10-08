@@ -5,7 +5,8 @@
 
 // 보스 스프라이트 (sprite-artist 제작, tools/sprites/<보스>.py). 배율 1.9, 발끝 앵커.
 const BSPR = {
-  kagutsuchi: enemySheet('kagutsuchi', 128, 64, 112, 1.9, { idle: [6, 8], cast: [5, 10], charge: [4, 12] }, 'bosses'),
+  // 카구츠치: 사용자 원화로 만든 v2 (tools/sprites/kagutsuchi_v2.py). 원화가 커서 조금 크게 그린다.
+  kagutsuchi: enemySheet('kagutsuchi', 128, 64, 112, 2.1, { idle: [6, 8], cast: [5, 10], charge: [4, 12] }, 'bosses'),
   raijin: enemySheet('raijin', 128, 64, 112, 1.9, { idle: [6, 8], drum: [5, 12], blink: [4, 20] }, 'bosses'),
   tsukuyomi: enemySheet('tsukuyomi', 128, 64, 112, 1.9, { idle: [6, 6], cast: [5, 10] }, 'bosses'),
   orochi: enemySheet('orochi_body', 160, 80, 124, 1.9, { idle: [4, 4] }, 'bosses'),
