@@ -7,24 +7,18 @@ const ISO = { K: 0.7, OX: W / 2, OY: 115, WW: 780, WD: 780, WALL: 54 };
 const VIEW = { sx: 0, sy: 0 }; // 화면 흔들림 오프셋
 
 // 월드 → 화면. h는 지면에서의 높이(화면 위쪽으로 올라감)
-const R3ON = () => typeof R3 !== 'undefined' && R3.active;
 function iso(wx, wy, h = 0) {
-  if (R3ON()) return r3Project(wx, wy, h);
   return { x: ISO.OX + (wx - wy) * ISO.K, y: ISO.OY + (wx + wy) * ISO.K * 0.5 - h };
 }
 // 화면 → 월드 (지면 기준)
 function unIso(sx, sy) {
-  if (R3ON()) return r3Unproject(sx, sy);
   const u = (sx - ISO.OX) / ISO.K, v = (sy - ISO.OY) / (ISO.K * 0.5);
   return { x: (u + v) / 2, y: (v - u) / 2 };
 }
 // 월드 방향각 → 화면에서 보이는 각도
-function isoAng(a) {
-  if (R3ON()) { const p = r3Project(0, 0), q = r3Project(Math.cos(a) * 100, Math.sin(a) * 100); return Math.atan2(q.y - p.y, q.x - p.x); }
-  const c = Math.cos(a), s = Math.sin(a); return Math.atan2((c + s) * 0.5, c - s); }
+function isoAng(a) { const c = Math.cos(a), s = Math.sin(a); return Math.atan2((c + s) * 0.5, c - s); }
 // 화면 기준 입력 방향(WASD) → 월드 이동 방향 (정규화)
 function screenDirToWorld(dx, dy) {
-  if (R3ON()) { const wx = dx + dy, wy = dy - dx, l = Math.hypot(wx, wy) || 1; return { x: wx / l, y: wy / l }; } // 정사영 쿼터뷰
   const wx = dx + 2 * dy, wy = 2 * dy - dx, l = Math.hypot(wx, wy) || 1;
   return { x: wx / l, y: wy / l };
 }

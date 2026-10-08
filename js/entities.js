@@ -81,7 +81,7 @@ function drawAirFx() {
         ctx.beginPath(); f.pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.stroke();
         ctx.lineWidth = f.width * 0.35; ctx.strokeStyle = '#fff'; ctx.stroke(); ctx.restore(); break;
       }
-      case 'after': { if (R3ON()) break; const q = iso(f.x, f.y); drawPlayerSprite(q.x, q.y, f.anim, f.frame, f.flip, f.color); break; }
+      case 'after': { const q = iso(f.x, f.y); drawPlayerSprite(q.x, q.y, f.anim, f.frame, f.flip, f.color); break; }
     }
   }
   ctx.globalAlpha = 1;

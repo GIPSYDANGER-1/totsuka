@@ -111,7 +111,6 @@ function cameraTarget() {
   return { ox, oy };
 }
 function updateCamera(dt, snap = false) {
-  if (R3ON()) return r3UpdateCamera(dt, snap);
   const t = cameraTarget(), k = snap ? 1 : Math.min(1, dt * 7);
   CAM.x += (t.ox - CAM.x) * k; CAM.y += (t.oy - CAM.y) * k;
   ISO.OX = Math.round(CAM.x); ISO.OY = Math.round(CAM.y); // 정수 위치라야 도트가 흐려지지 않는다
