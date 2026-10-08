@@ -13,6 +13,19 @@ const BSPR = {
   orochiHead: enemySheet('orochi_head', 48, 11, 24, 1.5, { idle: [4, 6], bite: [4, 12] }, 'bosses'), // 앵커 = 목 접합점
 };
 // 오로치 몸통 프레임 안의 목 밑동 8개 (화면 왼쪽 → 오른쪽). 숨쉬기 프레임마다 위로 0/1/2/1px
+// 카구츠치 8방향 (tools/sprites/kagutsuchi_v3.py). 직접 그린 방향 5개 + 좌우 반전 3개 (DIR8은 core.js).
+// [프레임 수, fps, 타격 프레임]. 시트가 없으면 kagutsuchi_* (v2, 좌우 반전만)로 그린다.
+const KAGU8 = (() => {
+  const o = { F: 128, ax: 64, ay: 112, scale: 2.1, anims: {} };
+  const add = (key, file, n, fps, hit = 0) => { o.anims[key] = { img: loadImg(`assets/bosses/kagutsuchi8/${file}.png`), n, fps, hit }; };
+  for (const d of ['s', 'se', 'e', 'ne', 'n']) {
+    for (const [k, n, fps, hit] of [['idle', 6, 8], ['move', 6, 10], ['charge', 4, 12], ['burst', 6, 12, 2], ['slam', 6, 12, 2]]) add(`${d}_${k}`, `${d}_${k}`, n, fps, hit);
+  }
+  add('roar', 's_roar', 5, 10); add('hurt', 's_hurt', 2, 10);
+  return o;
+})();
+const kagu8Ready = () => Object.values(KAGU8.anims).every(sprReady);
+
 const OROCHI_NECKS = [[51, 66], [54, 71], [62, 75], [74, 77], [86, 77], [98, 75], [106, 71], [109, 66]];
 const OROCHI_BREATH = [0, 1, 2, 1];
 
@@ -48,10 +61,11 @@ class Boss extends Enemy {
     this.sdt = dt * this.timeScale();
     this.baseUpdate(dt);
     if (this.act) this.act.t += this.sdt;
+    if (this.roarT > 0) this.roarT -= dt;
     this.face = this.faceLock ?? angTo(this, G.player);
     if (G.bossIntro > 0) return;
     if (this.phase === 1 && this.hp <= this.maxHp * 0.5) {
-      this.phase = 2;
+      this.phase = 2; this.roarT = 0.55; // 격노 돌입 포효
       banner('격노(激怒)', `${GODS[this.god].name}의 신위가 폭주한다`, 1.6);
       G.shake = 14; Sfx.play('gong');
       addFx({ type: 'ring', x: this.x, y: this.y, r0: 20, r1: 500, color: GODS[this.god].color, width: 8, life: 0.7 });
@@ -103,7 +117,7 @@ class Kagutsuchi extends Boss {
     const waves = this.phase === 2 ? 4 : 3;
     for (let k = 0; k < waves; k++) {
       const n = 14 + this.phase * 2, off = rand(0, TAU);
-      this.play('cast');
+      this.play('burst'); yield 2 / 12; // 웅크렸다가 양팔을 펼치는 프레임에 맞춰 터진다
       for (let i = 0; i < n; i++) this.bullet(off + i * TAU / n, 200, { r: 9, dmg: 12, color: '#ff7a2a' });
       Sfx.play('shoot'); yield 0.5;
     }
@@ -133,9 +147,9 @@ class Kagutsuchi extends Boss {
   }
   *pPillars() {
     const n = this.phase === 2 ? 8 : 5;
-    this.play('cast');
     for (let i = 0; i < n; i++) {
       const P = G.player;
+      if (i % 2 === 0) this.play('slam'); // 칼날 팔을 바닥에 내리꽂을 때마다 기둥이 솟는다
       addHazard({ kind: 'circle', x: P.x + rand(-20, 20), y: P.y + rand(-20, 20), r: 66, delay: 0.85, dmg: 18, fx: 'fire', color: '#ff7a2a' });
       yield 0.3;
     }
@@ -143,17 +157,41 @@ class Kagutsuchi extends Boss {
   }
   *pSpiral() {
     let t = 0, acc = 0, a = rand(0, TAU);
-    this.play('cast');
+    this.play('cast'); this.spinning = true; // 8방향 그림을 빠르게 돌려 회전
     while (t < 2.6) {
       t += this.sdt; acc += this.sdt;
       if (acc > 0.09) { acc = 0; for (let k = 0; k < 3; k++) this.bullet(a + k * TAU / 3, 230, { r: 8, dmg: 11, color: '#ffb04a' }); a += 0.27; }
       yield 0;
     }
+    this.spinning = false;
     yield 0.5;
   }
+  // v2 시트(좌우 반전만)에는 burst/slam이 없으니 cast로 대신 그린다
+  animFrame() { if (this.act && !this.spr.anims[this.act.name]) this.act = { ...this.act, name: 'cast' }; return super.animFrame(); }
   draw() {
     if (!G.silPass && Math.random() < 0.5) addFx({ type: 'p', x: this.x + rand(-25, 25), y: this.y + rand(-25, 25), h: rand(10, 50), vh: rand(80, 160), vx: 0, vy: 0, color: pick(['#ff6a2a', '#ffb04a', '#ff3a1a']), size: rand(3, 7), life: 0.6 });
+    if (kagu8Ready()) return this.draw8();
     this.drawBody() || this.drawAura('#ff8a3a', '火', '#3a0d06', '#ff5a1a');
+  }
+  // 8방향: 바라보는 방향(플레이어 쪽, 돌진 중엔 돌진 방향)에 맞는 그림을 고르고, 패턴마다 다른 동작을 재생
+  draw8() {
+    const A = KAGU8.anims;
+    const moved = Math.hypot(this.x - (this._px ?? this.x), this.y - (this._py ?? this.y)); this._px = this.x; this._py = this.y;
+    let d8 = ((Math.round(isoAng(this.faceLock ?? this.face) / (Math.PI / 4)) % 8) + 8) % 8;
+    if (this.spinning) d8 = Math.floor(G.time * 18) % 8;
+    const [dk, flip] = DIR8[d8];
+    const loop = k => Math.floor(this.t * A[k].fps) % A[k].n;
+    let key = dk + '_idle', f = loop(key), fl = flip;
+    const once = name => { const a = A[name], k = Math.floor(this.act.t * a.fps); return k < a.n ? k : -1; };
+    if (this.roarT > 0) { key = 'roar'; f = Math.min(4, Math.floor((0.55 - this.roarT) * 10)); fl = false; }
+    else if (this.act && (this.act.name === 'burst' || this.act.name === 'slam') && once(dk + '_' + this.act.name) >= 0) { key = dk + '_' + this.act.name; f = once(key); }
+    else if (this.hold === 'charge') { key = dk + '_charge'; f = loop(key); }
+    else if (this.spinning) { key = dk + '_burst'; f = 3; }
+    else if (moved > 0.3) { key = dk + '_move'; f = loop(key); }
+    this.drawShadowFeet(this.r * 1.3);
+    const a = A[key];
+    drawSprite25D(a.img, f * KAGU8.F, 0, KAGU8.F, KAGU8.F, this.x, this.y, KAGU8.ax, KAGU8.ay, KAGU8.scale, fl, { h: this.hopH || 0, flash: this.flash > 0 });
+    this.drawOverlay();
   }
 }
 
