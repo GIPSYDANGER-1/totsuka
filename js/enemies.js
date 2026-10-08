@@ -36,6 +36,10 @@ class Enemy {
   drawSpr(anim, frame, o = {}) {
     const s = this.spr, a = s.anims[anim], sc = s.scale, F = s.F;
     frame = clamp(Math.floor(frame), 0, a.n - 1);
+    if (o.rot === undefined) { // 2.5D: 바닥 그림자 + 림 라이트 (공중에 뜬 오니비는 그림자 생략)
+      return drawSprite25D(a.img, frame * F, 0, F, F, this.x, this.y, s.ax, s.ay, sc, this.flipX(),
+        { h: (o.h || 0) + (this.hopH || 0), flash: this.flash > 0, noShadow: !!o.h });
+    }
     ctx.save();
     ctx.translate(this.x, this.y - (o.h || 0));
     if (o.rot !== undefined) { ctx.rotate(o.rot); if (Math.cos(o.rot) < 0) ctx.scale(1, -1); }
@@ -46,14 +50,15 @@ class Enemy {
     if (this.flash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha *= 0.8; blit(); } // 피격 시 하얗게 번쩍
     ctx.restore();
   }
-  drawShadowFeet(w) { ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(this.x, this.y + 2, w, w * 0.38, 0, 0, TAU); ctx.fill(); }
+  drawShadowFeet(w) { if (G.silPass) return; ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(this.x, this.y + 2, w, w * 0.38, 0, 0, TAU); ctx.fill(); }
   baseUpdate(dt) {
     this.t += dt; this.flash = Math.max(0, this.flash - dt); this.hurtT = Math.max(0, (this.hurtT || 0) - dt);
+    if (this.hopV || this.hopH) { this.hopH = Math.max(0, (this.hopH || 0) + this.hopV * dt); this.hopV = this.hopH > 0 ? this.hopV - 1100 * dt : 0; }
     if (this.slowT > 0) this.slowT -= dt;
     if (this.burn > 0) {
       this.burn -= dt; this.burnTick += dt;
       if (Math.random() < dt * 14) addFx({ type: 'p', x: this.x + rand(-this.r, this.r) * 0.5, y: this.y + rand(-this.r, this.r) * 0.5, h: rand(5, this.r * 1.6), vh: 60, vx: 0, vy: 0, color: pick(['#ff7a2a', '#ffb04a']), size: 3, life: 0.4 });
-      if (this.burnTick >= 0.5) { this.burnTick -= 0.5; damageEnemy(this, this.burnDps * 0.5, { raw: true, silent: true, small: true, color: '#ff9a4a' }); }
+      if (this.burnTick >= 0.5) { this.burnTick -= 0.5; damageEnemy(this, this.burnDps * 0.5, { kind: 'burn', raw: true, silent: true, small: true, color: '#ff9a4a' }); }
       if (this.burn <= 0) this.burnDps = 0;
     }
     this.x += this.kx * dt; this.y += this.ky * dt;
@@ -62,8 +67,9 @@ class Enemy {
   }
   knock(ax, ay, f) { if (this.isBoss) f *= 0.08; else if (this.heavy) f *= 0.5; this.kx += ax * f; this.ky += ay * f; }
   moveToward(tx, ty, spd, dt) { const a = Math.atan2(ty - this.y, tx - this.x); this.x += Math.cos(a) * spd * dt; this.y += Math.sin(a) * spd * dt; }
-  drawShadow() { ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.beginPath(); ctx.ellipse(this.x, this.y + this.r * 0.75, this.r * 1.1, this.r * 0.42, 0, 0, TAU); ctx.fill(); }
+  drawShadow() { if (G.silPass) return; ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.beginPath(); ctx.ellipse(this.x, this.y + this.r * 0.75, this.r * 1.1, this.r * 0.42, 0, 0, TAU); ctx.fill(); }
   drawOverlay() {
+    if (G.silPass) return;
     if (this.flash > 0 && !this.spriteReady()) { ctx.globalAlpha = 0.7; circle(this.x, this.y, this.r, '#ffffff'); ctx.globalAlpha = 1; }
     if (this.slowT > 0 || G.eclipse > 0) { ctx.globalAlpha = 0.6; ring(this.x, this.y, this.r + 5, '#9fc0ff', 2); ctx.globalAlpha = 1; }
     if (!this.isBoss && this.hp < this.maxHp) {

@@ -151,7 +151,7 @@ class Kagutsuchi extends Boss {
     yield 0.5;
   }
   draw() {
-    if (Math.random() < 0.5) addFx({ type: 'p', x: this.x + rand(-25, 25), y: this.y + rand(-25, 25), h: rand(10, 50), vh: rand(80, 160), vx: 0, vy: 0, color: pick(['#ff6a2a', '#ffb04a', '#ff3a1a']), size: rand(3, 7), life: 0.6 });
+    if (!G.silPass && Math.random() < 0.5) addFx({ type: 'p', x: this.x + rand(-25, 25), y: this.y + rand(-25, 25), h: rand(10, 50), vh: rand(80, 160), vx: 0, vy: 0, color: pick(['#ff6a2a', '#ffb04a', '#ff3a1a']), size: rand(3, 7), life: 0.6 });
     this.drawBody() || this.drawAura('#ff8a3a', '火', '#3a0d06', '#ff5a1a');
   }
 }
@@ -215,7 +215,7 @@ class Raijin extends Boss {
     yield 0.5;
   }
   draw() {
-    if (Math.random() < 0.03) boltFx(this.x, this.y, this.x + rand(-80, 80), this.y + rand(-80, 80), '#cdb8ff', 2, 70, 0);
+    if (!G.silPass && Math.random() < 0.03) boltFx(this.x, this.y, this.x + rand(-80, 80), this.y + rand(-80, 80), '#cdb8ff', 2, 70, 0);
     if (this.drawBody()) return; // 천둥북 고리는 스프라이트에 들어 있다
     this.drumHit = Math.max(0, this.drumHit - 1 / 60);
     // 등 뒤의 천둥북 고리

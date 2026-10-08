@@ -2,7 +2,7 @@
 // ───────── 캔버스 / 공용 유틸 / 입력 / 사운드 ─────────
 const W = 1280, H = 720, TAU = Math.PI * 2;
 const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
+let ctx = canvas.getContext('2d'); // 실루엣 패스에서 잠시 오프스크린 캔버스로 바꿔 끼운다
 canvas.width = W; canvas.height = H;
 function fitCanvas() {
   const s = Math.min(innerWidth / W, innerHeight / H);
@@ -139,7 +139,8 @@ function roundRect(x, y, w, h, r) {
 }
 
 // ───────── 이미지 로더 ─────────
-function loadImg(src) { const img = new Image(); img.src = src; return img; }
+// 배포 후 에셋이 바뀌어도 예전 이미지가 캐시에서 나오지 않도록 버전 쿼리를 붙인다
+function loadImg(src) { const img = new Image(); img.src = src + '?v=' + (window.BUILD || 0); return img; }
 // 주인공: 사무라이 8방향 (오른쪽은 원본 에셋, 나머지는 sprite-artist가 tools/sprites/samurai8.py로 제작)
 // 96×96 프레임, 발끝 앵커 (46, 81). 직접 그린 방향은 5개(e, se, s, ne, n), 나머지 3개는 좌우 반전.
 // hit: 칼이 휘둘러지는 프레임. 판정이 누르는 즉시 나므로 그 프레임부터 재생한다.

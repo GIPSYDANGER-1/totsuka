@@ -277,6 +277,35 @@ function drawTorii(x, y, open, label) {
   if (label) label();
 }
 
+// ───────── 가림 실루엣 ─────────
+const boxesOverlap = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+function actorBox(e) {
+  const q = iso(e.x, e.y);
+  const h = e.god === 'orochi' ? 330 : e.isBoss ? 240 : (e.textH || e.r * 2) + 45;
+  const w = e.god === 'orochi' ? 440 : Math.max(110, h * 0.9);
+  return { x: q.x - w / 2, y: q.y - h, w, h: h + 30 };
+}
+const SIL = { a: document.createElement('canvas'), b: document.createElement('canvas') };
+// 캐릭터를 단색으로 그린 뒤(a), 앞을 가린 벽·소품 모양(b)과 겹치는 부분만 남겨 반투명하게 얹는다.
+// 그리기 함수들을 그대로 재사용하려고 전역 ctx와 화면 오프셋(VIEW)을 잠시 작은 캔버스로 옮긴다.
+function drawOccludedSilhouette(item, occ) {
+  const bx = Math.floor(item.box.x + VIEW.sx), by = Math.floor(item.box.y + VIEW.sy), w = Math.ceil(item.box.w), h = Math.ceil(item.box.h);
+  for (const c of [SIL.a, SIL.b]) { if (c.width < w) c.width = w; if (c.height < h) c.height = h; }
+  const ga = SIL.a.getContext('2d'), gb = SIL.b.getContext('2d');
+  const main = ctx, vx = VIEW.sx, vy = VIEW.sy;
+  const reset = g => { g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, w, h); };
+  VIEW.sx -= bx; VIEW.sy -= by; G.silPass = true;
+  try {
+    ctx = ga; reset(ga); item.d();
+    ga.setTransform(1, 0, 0, 1, 0, 0); ga.globalAlpha = 1; ga.globalCompositeOperation = 'source-in'; ga.fillStyle = item.sil; ga.fillRect(0, 0, w, h);
+    ctx = gb; reset(gb); for (const o of occ) o.d();
+    ga.setTransform(1, 0, 0, 1, 0, 0); ga.globalCompositeOperation = 'destination-in'; ga.drawImage(SIL.b, 0, 0); ga.globalCompositeOperation = 'source-over';
+  } finally { ctx = main; VIEW.sx = vx; VIEW.sy = vy; G.silPass = false; }
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 0.6;
+  ctx.drawImage(SIL.a, 0, 0, w, h, bx, by, w, h);
+  ctx.restore();
+}
+
 // 문(도리이): 벽에 붙은 문은 벽과 평행한 옆모습, 안쪽 모서리 문은 정면 모습
 function drawGate(d) {
   const q = iso(d.x, d.y), C = ENV.common, side = !!d.side, img = side ? C.toriiSide : C.toriiFront;
@@ -341,15 +370,31 @@ function render() {
   // 서 있는 것들: 깊이(x + y)로 정렬해 앞에 있는 것을 나중에 그린다.
   // 뒷벽 조각도 함께 정렬해야 꺾인 방에서 벽 뒤의 캐릭터가 올바르게 가려진다.
   screenTransform();
-  const list = [];
-  for (const w of MAP.walls) list.push({ z: (w.tx + w.ty) * TS - 1, d: () => { screenTransform(); drawWallSeg(w); } });
+  const list = [], actors = [], occluders = [];
+  for (const w of MAP.walls) { const it = { z: (w.tx + w.ty) * TS - 1, d: () => { screenTransform(); drawWallSeg(w); }, box: wallBox(w) }; list.push(it); occluders.push(it); }
   for (const d of G.doors) list.push({ z: d.x + d.y + (d.side ? -20 : 50), d: () => { screenTransform(); drawGate(d); } }); // 모서리 문은 양옆 벽 조각보다 앞에
-  for (const o of G.obstacles) list.push({ z: o.x + o.y, d: () => { uprightAt(o); drawProp(o); } });
-  for (const e of G.enemies) list.push({ z: e.x + e.y, d: () => { uprightAt(e, e.lift ?? e.r * 0.75); e.draw(); } });
+  for (const o of G.obstacles) {
+    const q = iso(o.x, o.y), tall = o.kind === 'rock' ? 60 : 95;
+    const it = { z: o.x + o.y, d: () => { uprightAt(o); drawProp(o); }, box: { x: q.x - 36, y: q.y - tall, w: 72, h: tall + 8 } };
+    list.push(it); occluders.push(it);
+  }
+  for (const e of G.enemies) {
+    const it = { z: e.x + e.y, d: () => { uprightAt(e, e.lift ?? e.r * 0.75); e.draw(); }, box: actorBox(e), sil: '#ff5a4a' };
+    list.push(it); actors.push(it);
+  }
   for (const pk of G.pickups) list.push({ z: pk.x + pk.y, d: () => { uprightAt(pk, 36 + Math.sin(pk.t * 3) * 5); drawRewardIcon(pk.kind, pk.x, pk.y, 22); } });
   for (const p of G.projectiles) list.push({ z: p.x + p.y, d: () => { uprightAt(p, 24); p.draw(); } });
-  if (!G.player.dead) list.push({ z: G.player.x + G.player.y, d: () => { uprightAt(G.player); G.player.draw(); } });
+  if (!G.player.dead) {
+    const q = iso(G.player.x, G.player.y);
+    const it = { z: G.player.x + G.player.y, d: () => { uprightAt(G.player); G.player.draw(); }, box: { x: q.x - 60, y: q.y - 125, w: 120, h: 150 }, sil: '#8fd0ff' };
+    list.push(it); actors.push(it);
+  }
   list.sort((a, b) => a.z - b.z).forEach(o => o.d());
+  // 벽·소품 뒤에 가려진 캐릭터는 가려진 부분만 실루엣으로 보여준다 (플레이어 푸른색, 적 붉은색)
+  for (const a of actors) {
+    const occ = occluders.filter(o => o.z > a.z && boxesOverlap(o.box, a.box));
+    if (occ.length) drawOccludedSilhouette(a, occ);
+  }
 
   screenTransform();
   drawAirFx();

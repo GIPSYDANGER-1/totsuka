@@ -106,6 +106,7 @@ function damageEnemy(e, amt, o = {}) {
   if (o.crit) dmg *= 2;
   dmg = Math.max(1, Math.round(dmg));
   e.hp -= dmg; e.flash = 0.1; e.hurtT = 0.2;
+  if (!e.isBoss) e.hopV = Math.max(e.hopV || 0, o.kind === 'burn' ? 0 : 150); // 맞으면 살짝 떠오른다
   addText(e.x + rand(-10, 10), e.y, dmg, o.crit ? '#ffe14a' : (o.color || '#ffffff'), o.crit ? 28 : (o.small ? 15 : 19), (e.textH || e.r * 2) + 12);
   if (!o.silent) Sfx.play('hit');
   if (o.kx !== undefined) e.knock(o.kx, o.ky, o.force || 200);
@@ -146,7 +147,7 @@ function hurtPlayer(dmg) {
   const P = G.player;
   if (!P || P.dead || P.iframes > 0 || P.dashT > 0 || G.state !== 'play') return false;
   dmg = Math.max(1, Math.round(dmg * D().enemyDmg));
-  P.hp -= dmg; P.iframes = 0.9; P.hurtT = 0.28;
+  P.hp -= dmg; P.iframes = 0.9; P.hurtT = 0.28; P.hopV = 170;
   G.shake = Math.max(G.shake, 11); G.hitstop = Math.max(G.hitstop, 0.07); G.redFlash = 0.35;
   addText(P.x, P.y, '-' + dmg, '#ff5050', 24, 75);
   burstParticles(P.x, P.y, 14, '#ff4040', 220, 3, 0.4, 30);
@@ -164,17 +165,67 @@ function hurtPlayer(dmg) {
 }
 
 // ───────── 플레이어 (스사노오) ─────────
+// ───────── 2.5D 스프라이트 ─────────
+// 광원은 위-왼쪽. 스프라이트 실루엣을 바닥에 비스듬히 눕혀 오른쪽 아래로 그림자를 드리우고,
+// 빛을 받는 위-왼쪽 윤곽에 지역 색 테두리 빛(림 라이트)을 둘러 공간에 선 물체처럼 보이게 한다.
+const _silCache = new Map();
+function silhouetteOf(img, sx, sy, sw, sh, color) {
+  if (!img || !img.complete || !img.naturalWidth) return null;
+  const key = img.src + '|' + sx + '|' + sy + '|' + sw + '|' + color;
+  let c = _silCache.get(key);
+  if (c) return c;
+  c = document.createElement('canvas'); c.width = sw; c.height = sh;
+  const g = c.getContext('2d');
+  g.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+  g.globalCompositeOperation = 'source-in'; g.fillStyle = color; g.fillRect(0, 0, sw, sh);
+  _silCache.set(key, c);
+  return c;
+}
+// (x, y): 발이 닿는 지면 위치, ax/ay: 프레임 안의 발끝, sc: 배율
+// o.h: 지면에서 띄운 높이 (그림자는 지면에 남는다), o.flash: 피격 번쩍임, o.noShadow / o.noRim
+function drawSprite25D(img, sx, sy, sw, sh, x, y, ax, ay, sc, flip, o = {}) {
+  const h = o.h || 0, fx = flip ? -1 : 1;
+  ctx.imageSmoothingEnabled = false;
+  if (!G.silPass && !o.noShadow) {
+    const sil = silhouetteOf(img, sx, sy, sw, sh, '#000');
+    if (sil) {
+      ctx.save(); ctx.globalAlpha *= clamp(0.38 - h * 0.004, 0.1, 0.38);
+      ctx.translate(x + h * 0.4, y + h * 0.2);
+      ctx.transform(fx, 0, -0.55, -0.36, 0, 0); // 위로 선 그림을 오른쪽 아래 바닥으로 눕힌다
+      ctx.drawImage(sil, -ax * sc, -ay * sc, sw * sc, sh * sc);
+      ctx.restore();
+    }
+  }
+  if (!G.silPass && !o.noRim) {
+    const rim = silhouetteOf(img, sx, sy, sw, sh, (G.room && STAGES[G.stageIdx].rim) || '#ffffff');
+    if (rim) {
+      ctx.save(); ctx.globalAlpha *= 0.6;
+      ctx.translate(x - 2, y - h - 2); ctx.scale(fx, 1);
+      ctx.drawImage(rim, -ax * sc, -ay * sc, sw * sc, sh * sc);
+      ctx.restore();
+    }
+  }
+  ctx.save();
+  ctx.translate(x, y - h); ctx.scale(fx, 1);
+  const blit = () => ctx.drawImage(img, sx, sy, sw, sh, -ax * sc, -ay * sc, sw * sc, sh * sc);
+  blit();
+  if (o.flash) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha *= 0.8; blit(); } // 피격 시 하얗게 번쩍
+  ctx.restore();
+}
+
 const SPR_ANCHOR_X = 46, SPR_FEET = 81, SPR_SCALE = 1.9;
-function drawPlayerSprite(x, y, anim, frame, flip, tint) {
+function drawPlayerSprite(x, y, anim, frame, flip, tint, h = 0) {
   const s = SPR[anim];
   if (!sprReady(s)) {
     circle(x, y - 18, 14, tint || '#e8e4da'); return;
   }
+  if (!tint) return drawSprite25D(s.img, frame * 96, 0, 96, 96, x, y + 8, SPR_ANCHOR_X, SPR_FEET, SPR_SCALE, flip, { h });
+  // 대시 잔상: 밝게 더하기만 한다
   const dw = 96 * SPR_SCALE;
   ctx.save();
   ctx.translate(x, y + 8);
   if (flip) ctx.scale(-1, 1);
-  if (tint) { ctx.globalCompositeOperation = 'lighter'; }
+  ctx.globalCompositeOperation = 'lighter';
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(s.img, frame * 96, 0, 96, 96, -SPR_ANCHOR_X * SPR_SCALE, -SPR_FEET * SPR_SCALE, dw, dw);
   ctx.restore();
@@ -203,6 +254,7 @@ class Player {
     const m = unIso(I.mouse.x, I.mouse.y + 20);
     this.aim = Math.atan2(m.y - this.y, m.x - this.x);
     this.iframes = Math.max(0, this.iframes - dt);
+    if (this.hopV || this.hopH) { this.hopH = Math.max(0, (this.hopH || 0) + this.hopV * dt); this.hopV = this.hopH > 0 ? this.hopV - 1100 * dt : 0; }
     this.hurtT = Math.max(0, this.hurtT - dt);
     this.atkCd -= dt; this.comboT -= dt; this.specCd -= dt; this.castCd -= dt; this.critT -= dt; this.atkAnim -= dt;
     this.spinAnim = (this.spinAnim || 0) - dt; this.castAnim = (this.castAnim || 0) - dt;
@@ -344,8 +396,8 @@ class Player {
 
   draw() {
     // 그림자
-    ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(this.x, this.y + 6, 20, 8, 0, 0, TAU); ctx.fill();
-    if (this.critT > 0) { ctx.save(); ctx.shadowColor = '#cfe0ff'; ctx.shadowBlur = 25; ring(this.x, this.y - 18, 30, 'rgba(207,224,255,0.6)', 2); ctx.restore(); }
+    if (!G.silPass) ctx.fillStyle = 'rgba(0,0,0,0.4)'; else ctx.fillStyle = 'rgba(0,0,0,0)'; ctx.beginPath(); ctx.ellipse(this.x, this.y + 6, 20, 8, 0, 0, TAU); ctx.fill();
+    if (this.critT > 0 && !G.silPass) { ctx.save(); ctx.shadowColor = '#cfe0ff'; ctx.shadowBlur = 25; ring(this.x, this.y - 18, 30, 'rgba(207,224,255,0.6)', 2); ctx.restore(); }
     // 우선순위: 피격 > 대시 > 주술 > 회전베기 > 연격 > 달리기 > 대기
     const once = (k, elapsed) => Math.min(SPR[k].n - 1, SPR[k].hit + Math.floor(elapsed * SPR[k].fps));
     const loop = k => Math.floor(this.animT * SPR[k].fps) % SPR[k].n;
@@ -359,7 +411,7 @@ class Player {
     else if (this.moving) { anim = 'run_' + d; frame = loop(anim); }
     const blink = this.iframes > 0 && this.dashT <= 0 && Math.floor(G.time * 18) % 2 === 0;
     ctx.globalAlpha = blink ? 0.35 : 1;
-    drawPlayerSprite(this.x, this.y, anim, frame, flip);
+    drawPlayerSprite(this.x, this.y, anim, frame, flip, null, this.hopH || 0);
     ctx.globalAlpha = 1;
     // 스프라이트가 없을 때만 검 궤적을 선으로 그린다 (스프라이트에는 검이 그려져 있음)
     if (this.swing && !sprReady(SPR.idle_e)) {
@@ -368,6 +420,7 @@ class Player {
       ctx.save(); ctx.strokeStyle = '#eef4ff'; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.shadowColor = '#9fc0ff'; ctx.shadowBlur = 14;
       ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * 18, cy + Math.sin(a) * 18); ctx.lineTo(cx + Math.cos(a) * 62, cy + Math.sin(a) * 62); ctx.stroke(); ctx.restore();
     }
+    if (G.silPass) return;
     // 조준 표시
     const sa = isoAng(this.aim), ax = this.x + Math.cos(sa) * 40, ay = this.y + 2 + Math.sin(sa) * 26;
     ctx.save(); ctx.translate(ax, ay); ctx.rotate(sa); ctx.fillStyle = 'rgba(255,255,255,0.35)';

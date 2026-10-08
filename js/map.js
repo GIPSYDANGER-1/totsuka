@@ -73,6 +73,7 @@ function makeRoomMap(isBoss) {
     const sx = (cx - cy) * TS * ISO.K, sy = (cx + cy) * TS * ISO.K / 2;
     minX = Math.min(minX, sx); maxX = Math.max(maxX, sx); minY = Math.min(minY, sy); maxY = Math.max(maxY, sy);
   }
+  ISO.WALL = wallScreenH();
   MAP.bounds = { minX, maxX, minY: minY - ISO.WALL - 30, maxY: maxY + 30 };
 }
 
@@ -203,14 +204,27 @@ function buildBg(st) {
 }
 function poly(g, pts, fill) { g.beginPath(); pts.forEach((q, i) => i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y)); g.closePath(); g.fillStyle = fill; g.fill(); }
 
+// 벽 높이(화면 px): 벽 이미지 높이에서 읽는다 (24×44 → 낮은 벽, 24×68 → 높은 벽). 밑변은 늘 2:1 사선 11px.
+function wallScreenH() {
+  const e = envSet(), img = e && e.wall[0];
+  return imgOk(img) ? (img.naturalHeight - 12) * PX : 54;
+}
+// 벽 조각의 화면 영역 (원점 기준, 가림 판정용)
+function wallBox(w) {
+  const x0 = w.tx * TS, y0 = w.ty * TS;
+  const a = w.side === 'L' ? iso(x0, y0 + TS) : iso(x0 + TS, y0), b = iso(x0, y0); // a: 아래 끝, b: 위 끝
+  return { x: Math.min(a.x, b.x), y: b.y - ISO.WALL, w: Math.abs(a.x - b.x), h: a.y - b.y + ISO.WALL };
+}
+
 // 뒷벽 한 조각 (screenTransform 상태에서 호출)
 function drawWallSeg(w) {
   const st = STAGES[G.stageIdx], env = envSet(), x0 = w.tx * TS, y0 = w.ty * TS;
   const variant = hash2(w.tx * 3 + (w.side === 'R' ? 7 : 0), w.ty * 5) < 0.25 ? 1 : 0;
   if (envReady()) {
-    const img = env.wall[variant];
-    if (w.side === 'L') { const a = iso(x0, y0 + TS); ctx.drawImage(img, a.x, a.y - 43 * PX, 24 * PX, 44 * PX); }
-    else { const a = iso(x0, y0); ctx.drawImage(envVariant(img, true, 0.28), a.x, a.y - 32 * PX, 24 * PX, 44 * PX); }
+    const img = env.wall[variant], ih = img.naturalHeight;
+    ctx.imageSmoothingEnabled = false;
+    if (w.side === 'L') { const a = iso(x0, y0 + TS); ctx.drawImage(img, a.x, a.y - (ih - 1) * PX, 24 * PX, ih * PX); }
+    else { const a = iso(x0, y0); ctx.drawImage(envVariant(img, true, 0.28), a.x, a.y - (ih - 12) * PX, 24 * PX, ih * PX); }
     return;
   }
   // 에셋이 없을 때: 면 두 개로 된 단순한 벽
@@ -230,10 +244,9 @@ function drawProp(o) {
   const img = o.kind === 'rock' ? env && env.rock[o.v || 0] : ENV.common.lantern;
   if (!imgOk(img)) return drawLantern(o);
   const [ax, ay] = o.kind === 'rock' ? ENV_ANCHOR.rock : ENV_ANCHOR.lantern;
-  ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.ellipse(o.x, o.y + 2, o.r * 1.1, o.r * 0.45, 0, 0, TAU); ctx.fill();
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(img, o.x - ax * PX, o.y - ay * PX, img.naturalWidth * PX, img.naturalHeight * PX);
-  if (o.kind !== 'rock') { // 석등 불빛
+  if (!G.silPass) { ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.ellipse(o.x, o.y + 2, o.r * 1.1, o.r * 0.45, 0, 0, TAU); ctx.fill(); }
+  drawSprite25D(img, 0, 0, img.naturalWidth, img.naturalHeight, o.x, o.y, ax, ay, PX, false, { noRim: true });
+  if (o.kind !== 'rock' && !G.silPass) { // 석등 불빛
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
     const gy = o.y - 30 * PX, gr = ctx.createRadialGradient(o.x, gy, 2, o.x, gy, 40);
     gr.addColorStop(0, `rgba(255,190,110,${0.32 + Math.sin(G.time * 5 + o.x) * 0.06})`); gr.addColorStop(1, 'rgba(255,190,110,0)');
